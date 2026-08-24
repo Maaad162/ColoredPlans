@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.edge-*/
+*-preview.png
+.env.local
+.env.*.local

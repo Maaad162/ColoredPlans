@@ -1,0 +1,17 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    match /obras/{obraId} {
+      allow read: if autenticado();
+
+      match /mapas/{mapaId} {
+        allow read, create, update, delete: if autenticado();
+      }
+    }
+  }
+}
