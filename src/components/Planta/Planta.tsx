@@ -1,16 +1,23 @@
-import { useRef, useState } from "react";
-import type { Bloco as BlocoType, Marcacoes } from "../../types/planta";
+import { useMemo, useRef, useState } from "react";
+import type {
+  Bloco as BlocoType,
+  Marcacoes,
+  StatusConfig,
+} from "../../types/planta";
 import { Bloco } from "./Bloco";
 import "./Planta.css";
 
 interface PlantaProps {
   blocos: BlocoType[];
   marcacoes: Marcacoes;
+  legendas: StatusConfig[];
   selecionadaId: string | null;
   unidadeAtenuada: (id: string) => boolean;
   onSelecionar: (id: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  mapaKit: boolean;
+  kitUnidadeIds: string[];
 }
 
 interface PanState {
@@ -23,14 +30,18 @@ interface PanState {
 export function Planta({
   blocos,
   marcacoes,
+  legendas,
   selecionadaId,
   unidadeAtenuada,
   onSelecionar,
   zoom,
   onZoomChange,
+  mapaKit,
+  kitUnidadeIds,
 }: PlantaProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState<PanState | null>(null);
+  const unidadesDoKit = useMemo(() => new Set(kitUnidadeIds), [kitUnidadeIds]);
 
   function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -131,8 +142,11 @@ export function Planta({
               key={bloco.id}
               bloco={bloco}
               marcacoes={marcacoes}
+              legendas={legendas}
               selecionadaId={selecionadaId}
               unidadeAtenuada={unidadeAtenuada}
+              mapaKit={mapaKit}
+              unidadesDoKit={unidadesDoKit}
               onSelecionar={onSelecionar}
             />
           ))}

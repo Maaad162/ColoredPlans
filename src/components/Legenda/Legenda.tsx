@@ -1,12 +1,13 @@
-import { STATUSES, STATUS_SEM_MARCACAO } from "../../config/statuses";
-import type { StatusId } from "../../types/planta";
+import { STATUS_SEM_MARCACAO } from "../../config/statuses";
+import type { StatusConfig } from "../../types/planta";
 
 interface LegendaProps {
-  contagens: Record<StatusId | "sem-marcacao", number>;
+  legendas: StatusConfig[];
+  contagens: Record<string, number>;
   total: number;
 }
 
-export function Legenda({ contagens, total }: LegendaProps) {
+export function Legenda({ legendas, contagens, total }: LegendaProps) {
   return (
     <section className="side-card legenda" aria-labelledby="legenda-titulo">
       <div className="side-card__cabecalho">
@@ -17,7 +18,7 @@ export function Legenda({ contagens, total }: LegendaProps) {
         <span className="total-pill">{total} unidades</span>
       </div>
       <div className="legenda__lista">
-        {STATUSES.map((status) => (
+        {legendas.map((status) => (
           <div className="legenda__item" key={status.id}>
             <span
               className="legenda__cor"
@@ -25,7 +26,7 @@ export function Legenda({ contagens, total }: LegendaProps) {
               aria-hidden="true"
             />
             <span className="legenda__nome">{status.nome}</span>
-            <strong>{contagens[status.id]}</strong>
+            <strong>{contagens[status.id] ?? 0}</strong>
           </div>
         ))}
         <div className="legenda__item">
@@ -39,13 +40,13 @@ export function Legenda({ contagens, total }: LegendaProps) {
         </div>
       </div>
       <div className="legenda__barra" aria-hidden="true">
-        {STATUSES.map((status) =>
-          contagens[status.id] > 0 ? (
+        {legendas.map((status) =>
+          (contagens[status.id] ?? 0) > 0 ? (
             <span
               key={status.id}
               style={{
                 backgroundColor: status.cor,
-                width: `${(contagens[status.id] / total) * 100}%`,
+                width: `${((contagens[status.id] ?? 0) / total) * 100}%`,
               }}
             />
           ) : null,

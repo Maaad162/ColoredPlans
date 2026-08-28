@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { STATUSES } from "../config/statuses";
 import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../data/planta";
 import {
   atualizarStatusRemoto,
@@ -10,15 +9,21 @@ import {
   substituirMarcacoesRemotas,
 } from "../services/firestore";
 import { carregarAbaAtiva, salvarAbaAtiva } from "../services/storage";
+import { migrarKitsEMapas } from "../services/kits";
 import type {
   EstadoMapas,
   FerramentaPintura,
   Marcacoes,
   StatusFilter,
+  StatusConfig,
   StatusId,
 } from "../types/planta";
 
-export function usePlanta(usuarioId: string) {
+export function usePlanta(
+  usuarioId: string,
+  legendas: StatusConfig[],
+  habilitarKits = false,
+) {
   const [estadoMapas, setEstadoMapas] = useState<EstadoMapas>(() => ({
     version: 3,
     abaAtivaId: carregarAbaAtiva(usuarioId) ?? "",
@@ -36,6 +41,23 @@ export function usePlanta(usuarioId: string) {
   const [statusFiltro, setStatusFiltro] = useState<StatusFilter>("todos");
 
   useEffect(() => {
+    if (
+      statusFiltro !== "todos" &&
+      statusFiltro !== "sem-marcacao" &&
+      !legendas.some((legenda) => legenda.id === statusFiltro)
+    ) {
+      setStatusFiltro("todos");
+    }
+    if (
+      statusPincel &&
+      statusPincel !== "sem-marcacao" &&
+      !legendas.some((legenda) => legenda.id === statusPincel)
+    ) {
+      setStatusPincel(null);
+    }
+  }, [legendas, statusFiltro, statusPincel]);
+
+  useEffect(() => {
     if (estadoMapas.abaAtivaId) {
       salvarAbaAtiva(usuarioId, estadoMapas.abaAtivaId);
     }
@@ -48,6 +70,7 @@ export function usePlanta(usuarioId: string) {
     setErroSincronizacao(null);
 
     void migrarMapasLegados(usuarioId)
+      .then(() => habilitarKits ? migrarKitsEMapas(usuarioId) : undefined)
       .then(() => {
         if (!ativo) return;
         cancelarObservacao = observarMapas(
@@ -60,6 +83,8 @@ export function usePlanta(usuarioId: string) {
                   id: "mapa-principal",
                   nome: "Mapa principal",
                   userId: usuarioId,
+                  tipo: "manual" as const,
+                  kitUnidadeIds: [],
                   marcacoes: {},
                   criadoEm: new Date().toISOString(),
                 };
@@ -93,7 +118,7 @@ export function usePlanta(usuarioId: string) {
       ativo = false;
       cancelarObservacao?.();
     };
-  }, [usuarioId]);
+  }, [habilitarKits, usuarioId]);
 
   function registrarErro(erro: Error) {
     console.error("Falha ao sincronizar com o Firestore:", erro);
@@ -113,22 +138,26 @@ export function usePlanta(usuarioId: string) {
     : null;
 
   const contagens = useMemo(() => {
-    const resultado: Record<StatusId | "sem-marcacao", number> = {
-      concluido: 0,
-      andamento: 0,
-      pendente: 0,
-      vistoria: 0,
-      outro: 0,
-      "sem-marcacao": 0,
-    };
+    const resultado: Record<string, number> = { "sem-marcacao": 0 };
+    for (const legenda of legendas) resultado[legenda.id] = 0;
 
     for (const unidade of UNIDADES) {
       const status = marcacoes[unidade.id];
-      if (status) resultado[status] += 1;
+      if (status && status in resultado) resultado[status] += 1;
       else resultado["sem-marcacao"] += 1;
     }
     return resultado;
-  }, [marcacoes]);
+  }, [legendas, marcacoes]);
+
+  const usoPorLegenda = useMemo(() => {
+    const resultado: Record<string, number> = {};
+    for (const mapa of estadoMapas.abas) {
+      for (const status of Object.values(mapa.marcacoes)) {
+        if (status) resultado[status] = (resultado[status] ?? 0) + 1;
+      }
+    }
+    return resultado;
+  }, [estadoMapas.abas]);
 
   function selecionarUnidade(id: string) {
     setUnidadeSelecionadaId(id);
@@ -216,6 +245,8 @@ export function usePlanta(usuarioId: string) {
       id,
       nome: nomeNormalizado,
       userId: usuarioId,
+      tipo: "manual" as const,
+      kitUnidadeIds: [],
       marcacoes: {},
       criadoEm: new Date().toISOString(),
     };
@@ -230,6 +261,8 @@ export function usePlanta(usuarioId: string) {
   }
 
   function excluirAba(id: string) {
+    const mapa = estadoMapas.abas.find((aba) => aba.id === id);
+    if (!mapa || mapa.tipo === "kit") return false;
     setEstadoMapas((estadoAtual) => {
       if (estadoAtual.abas.length <= 1) return estadoAtual;
       const indiceExcluido = estadoAtual.abas.findIndex((aba) => aba.id === id);
@@ -244,6 +277,7 @@ export function usePlanta(usuarioId: string) {
     });
     void excluirMapaRemoto(id, usuarioId).catch(registrarErro);
     setUnidadeSelecionadaId(null);
+    return true;
   }
 
   function unidadeAtenuada(id: string) {
@@ -262,7 +296,7 @@ export function usePlanta(usuarioId: string) {
   return {
     blocos: BLOCOS,
     unidades: UNIDADES,
-    statuses: STATUSES,
+    statuses: legendas,
     abas: estadoMapas.abas,
     abaAtual,
     marcacoes,
@@ -271,6 +305,7 @@ export function usePlanta(usuarioId: string) {
     blocoFiltro,
     statusFiltro,
     contagens,
+    usoPorLegenda,
     sincronizando,
     erroSincronizacao,
     selecionarUnidade,

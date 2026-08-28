@@ -14,13 +14,12 @@ import {
   writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
-import { STATUSES } from "../config/statuses";
 import { db } from "../config/firebase";
+import { UNIDADE_BY_ID } from "../data/planta";
 import type { MapaServico, Marcacoes, StatusId } from "../types/planta";
 
 export const OBRA_ID = "obra-principal";
 
-const statusValidos = new Set(STATUSES.map((status) => status.id));
 const mapasLegadosCollection = collection(db, "obras", OBRA_ID, "mapas");
 
 function mapasCollection(usuarioId: string) {
@@ -41,8 +40,8 @@ function mapaDocument(usuarioId: string, id: string) {
 function normalizarMarcacoes(valor: unknown): Marcacoes {
   if (!valor || typeof valor !== "object" || Array.isArray(valor)) return {};
   return Object.fromEntries(
-    Object.entries(valor).filter(([, status]) =>
-      statusValidos.has(status as StatusId),
+    Object.entries(valor).filter(
+      ([, status]) => typeof status === "string" && status.length <= 128,
     ),
   ) as Marcacoes;
 }
@@ -62,12 +61,26 @@ export function observarMapas(
             data.criadoEm instanceof Timestamp
               ? data.criadoEm.toDate().toISOString()
               : new Date().toISOString();
+          const kitId =
+            data.tipo === "kit" && typeof data.kitId === "string"
+              ? data.kitId
+              : undefined;
           return {
             id: documento.id,
             userId: usuarioId,
+            tipo: kitId ? "kit" : "manual",
+            ...(kitId ? { kitId } : {}),
+            kitUnidadeIds: Array.isArray(data.kitUnidadeIds)
+              ? [...new Set(
+                  data.kitUnidadeIds.filter(
+                    (id): id is string =>
+                      typeof id === "string" && Boolean(UNIDADE_BY_ID[id]),
+                  ),
+                )]
+              : [],
             nome:
               typeof data.nome === "string" && data.nome.trim()
-                ? data.nome.trim().slice(0, 48)
+                ? data.nome.trim().slice(0, kitId ? 80 : 48)
                 : "Mapa sem nome",
             marcacoes: normalizarMarcacoes(data.marcacoes),
             criadoEm,
@@ -93,6 +106,8 @@ export async function migrarMapasLegados(usuarioId: string) {
       const data = documento.data();
       batch.set(mapaDocument(usuarioId, documento.id), {
         userId: usuarioId,
+        tipo: "manual",
+        kitUnidadeIds: [],
         nome:
           typeof data.nome === "string" && data.nome.trim()
             ? data.nome.trim().slice(0, 48)
@@ -119,6 +134,8 @@ export function criarMapaRemoto(mapa: MapaServico, usuarioId: string) {
 
   return setDoc(mapaDocument(usuarioId, mapa.id), {
     userId: usuarioId,
+    tipo: "manual",
+    kitUnidadeIds: [],
     nome: mapa.nome,
     marcacoes: {},
     criadoEm: serverTimestamp(),

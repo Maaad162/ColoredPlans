@@ -1,19 +1,29 @@
-import type { Bloco as BlocoType, Marcacoes } from "../../types/planta";
+import type {
+  Bloco as BlocoType,
+  Marcacoes,
+  StatusConfig,
+} from "../../types/planta";
 import { Unidade } from "./Unidade";
 
 interface BlocoProps {
   bloco: BlocoType;
   marcacoes: Marcacoes;
+  legendas: StatusConfig[];
   selecionadaId: string | null;
   unidadeAtenuada: (id: string) => boolean;
+  mapaKit: boolean;
+  unidadesDoKit: Set<string>;
   onSelecionar: (id: string) => void;
 }
 
 export function Bloco({
   bloco,
   marcacoes,
+  legendas,
   selecionadaId,
   unidadeAtenuada,
+  mapaKit,
+  unidadesDoKit,
   onSelecionar,
 }: BlocoProps) {
   return (
@@ -34,8 +44,11 @@ export function Bloco({
           key={unidade.id}
           unidade={unidade}
           statusId={marcacoes[unidade.id] ?? null}
+          legendas={legendas}
           selecionada={selecionadaId === unidade.id}
           atenuada={unidadeAtenuada(unidade.id)}
+          mapaKit={mapaKit}
+          kitUtilizado={unidadesDoKit.has(unidade.id)}
           onSelecionar={onSelecionar}
         />
       ))}

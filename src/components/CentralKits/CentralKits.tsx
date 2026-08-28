@@ -1,0 +1,349 @@
+import { useEffect, useMemo, useState } from "react";
+import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../../data/planta";
+import { useKits } from "../../hooks/useKits";
+import { calcularConsumoKit, type DadosKit } from "../../services/kits";
+import type { Kit, MaterialKit } from "../../types/planta";
+
+interface CentralKitsProps {
+  usuarioId: string;
+  onMensagem: (mensagem: string) => void;
+  onAbrirMapa: (mapaId: string) => void;
+}
+
+function gerarId(prefixo: string) {
+  return `${prefixo}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function materialVazio(): MaterialKit {
+  return {
+    id: gerarId("material"),
+    codigoSienge: "",
+    descricao: "",
+    detalhe: "",
+    quantidadePorKit: 1,
+  };
+}
+
+function formatarQuantidade(valor: number) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
+}
+
+export function CentralKits({ usuarioId, onMensagem, onAbrirMapa }: CentralKitsProps) {
+  const kitsState = useKits(usuarioId, true);
+  const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<Kit | "novo" | null>(null);
+  const [vinculando, setVinculando] = useState<Kit | null>(null);
+
+  useEffect(() => {
+    if (kitsState.kits.length === 0) {
+      setSelecionadoId(null);
+      return;
+    }
+    if (!kitsState.kits.some((kit) => kit.id === selecionadoId)) {
+      setSelecionadoId(kitsState.kits[0].id);
+    }
+  }, [kitsState.kits, selecionadoId]);
+
+  const selecionado =
+    kitsState.kits.find((kit) => kit.id === selecionadoId) ?? null;
+
+  async function excluir(kit: Kit) {
+    if (!window.confirm(`Excluir o Kit “${kit.nome}”, seu mapa associado e todas as marcações desse mapa?`)) return;
+    try {
+      await kitsState.excluir(kit.id);
+      onMensagem(`Kit “${kit.nome}” e mapa associado excluídos.`);
+    } catch (falha) {
+      onMensagem(falha instanceof Error ? falha.message : "Não foi possível excluir o Kit.");
+    }
+  }
+
+  return (
+    <section className="kits-page" aria-labelledby="kits-titulo">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Estoque · consumo por unidade</p>
+          <h2 id="kits-titulo">Central de Kits</h2>
+          <p>Um Kit representa sempre o material necessário para uma unidade da planta.</p>
+        </div>
+        <button className="button button--primary" type="button" onClick={() => setEditor("novo")}>+ Criar Kit</button>
+      </div>
+
+      {kitsState.erro && <div className="sync-warning" role="alert">{kitsState.erro}</div>}
+      {kitsState.carregando ? (
+        <div className="section-loading">Carregando Kits…</div>
+      ) : kitsState.kits.length === 0 ? (
+        <div className="kits-empty">
+          <span aria-hidden="true">▦</span>
+          <h3>Nenhum Kit cadastrado</h3>
+          <p>Crie o primeiro Kit e informe os materiais necessários para uma unidade.</p>
+          <button className="button button--primary" type="button" onClick={() => setEditor("novo")}>Criar primeiro Kit</button>
+        </div>
+      ) : (
+        <div className="kits-layout">
+          <aside className="kits-list" aria-label="Kits cadastrados">
+            <div className="kits-list__heading"><span>Kits cadastrados</span><strong>{kitsState.kits.length}</strong></div>
+            {kitsState.kits.map((kit) => (
+              <button
+                type="button"
+                className={`kit-list-item${kit.id === selecionadoId ? " kit-list-item--active" : ""}`}
+                key={kit.id}
+                onClick={() => setSelecionadoId(kit.id)}
+              >
+                <span className="kit-list-item__icon" aria-hidden="true">▦</span>
+                <span><strong>{kit.nome}</strong><small>{kit.unidadeIds.length} unidades · {kit.materiais.length} materiais</small><small>Mapa: {kit.nome}</small></span>
+              </button>
+            ))}
+          </aside>
+          {selecionado && (
+            <KitDetalhes
+              kit={selecionado}
+              onEditar={() => setEditor(selecionado)}
+              onExcluir={() => void excluir(selecionado)}
+              onVincular={() => setVinculando(selecionado)}
+              onAbrirMapa={() => onAbrirMapa(selecionado.mapaId)}
+            />
+          )}
+        </div>
+      )}
+
+      {editor && (
+        <KitEditorModal
+          key={editor === "novo" ? "novo" : editor.id}
+          kit={editor === "novo" ? null : editor}
+          onFechar={() => setEditor(null)}
+          onSalvar={async (dados) => {
+            try {
+              const id = await kitsState.salvar(dados);
+              setSelecionadoId(id);
+              setEditor(null);
+              onMensagem(`Kit “${dados.nome.trim()}” salvo.`);
+            } catch (falha) {
+              throw new Error(falha instanceof Error ? falha.message : "Não foi possível salvar o Kit.");
+            }
+          }}
+        />
+      )}
+
+      {vinculando && (
+        <KitUnidadesModal
+          key={vinculando.id}
+          kit={vinculando}
+          onFechar={() => setVinculando(null)}
+          onSalvar={async (selecionadas) => {
+            try {
+              await kitsState.vincular(vinculando.id, selecionadas);
+              setVinculando(null);
+              onMensagem(`${selecionadas.length} unidade(s) vinculada(s) ao Kit “${vinculando.nome}”.`);
+            } catch (falha) {
+              throw new Error(falha instanceof Error ? falha.message : "Não foi possível atualizar as unidades do Kit.");
+            }
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+interface KitDetalhesProps {
+  kit: Kit;
+  onEditar: () => void;
+  onExcluir: () => void;
+  onVincular: () => void;
+  onAbrirMapa: () => void;
+}
+
+function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
+  const consumo = calcularConsumoKit(kit);
+  return (
+    <article className="kit-details">
+      <header className="kit-details__header">
+        <div><p className="eyebrow">Resumo de utilização</p><h3>{kit.nome}</h3></div>
+        <div className="kit-details__actions">
+          <button className="button button--secondary" type="button" onClick={onAbrirMapa} disabled={!kit.mapaId}>Abrir mapa</button>
+          <button className="button button--secondary" type="button" onClick={onEditar}>Editar</button>
+          <button className="button button--secondary" type="button" onClick={onVincular}>Selecionar unidades</button>
+          <button className="icon-button icon-button--danger" type="button" onClick={onExcluir} aria-label="Excluir Kit">×</button>
+        </div>
+      </header>
+      <div className="kit-metrics">
+        <div><span>Unidades atendidas</span><strong>{kit.unidadeIds.length}</strong></div>
+        <div><span>Materiais no Kit</span><strong>{kit.materiais.length}</strong></div>
+        <div><span>Aplicações contabilizadas</span><strong>{kit.unidadeIds.length}</strong></div>
+      </div>
+      <section className="kit-map-link" aria-label="Mapa associado">
+        <div><span>Mapa associado</span><strong>{kit.nome}</strong></div>
+        <button className="link-button" type="button" onClick={onAbrirMapa} disabled={!kit.mapaId}>Abrir em Mapas e Marcações</button>
+      </section>
+      <section className="kit-section">
+        <div className="kit-section__heading"><div><p className="field-label">Materiais utilizados</p><h4>Consumo calculado automaticamente</h4></div><small>Qtd/Kit × unidades atendidas</small></div>
+        <div className="kit-table-wrap">
+          <table className="kit-table">
+            <thead><tr><th>Cód. Sienge</th><th>Descrição</th><th>Detalhe</th><th>Qtd/Kit</th><th>Utilizado</th></tr></thead>
+            <tbody>
+              {consumo.map((material) => (
+                <tr key={material.id}>
+                  <td><code>{material.codigoSienge}</code></td>
+                  <td><strong>{material.descricao}</strong></td>
+                  <td>{material.detalhe}</td>
+                  <td>{formatarQuantidade(material.quantidadePorKit)}</td>
+                  <td><strong className="consumption-value">{formatarQuantidade(material.utilizado)}</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="kit-section">
+        <div className="kit-section__heading"><div><p className="field-label">Unidades da planta</p><h4>Unidades que receberam o Kit</h4></div></div>
+        {kit.unidadeIds.length ? (
+          <div className="unit-chips">
+            {kit.unidadeIds.map((id) => {
+              const unidade = UNIDADE_BY_ID[id];
+              return unidade ? <span key={id}>Bloco {unidade.bloco} · {unidade.numero}</span> : null;
+            })}
+          </div>
+        ) : <p className="kit-section__empty">Nenhuma unidade vinculada.</p>}
+      </section>
+    </article>
+  );
+}
+
+interface KitEditorModalProps {
+  kit: Kit | null;
+  onFechar: () => void;
+  onSalvar: (dados: DadosKit) => Promise<void>;
+}
+
+function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
+  const [nome, setNome] = useState(kit?.nome ?? "");
+  const [materiais, setMateriais] = useState<MaterialKit[]>(
+    kit?.materiais.map((material) => ({ ...material })) ?? [materialVazio()],
+  );
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  function atualizarMaterial(id: string, campo: keyof MaterialKit, valor: string | number) {
+    setMateriais((atuais) => atuais.map((material) => material.id === id ? { ...material, [campo]: valor } : material));
+  }
+
+  async function salvar(event: React.FormEvent) {
+    event.preventDefault();
+    if (!nome.trim()) return setErro("Informe o nome do Kit.");
+    if (materiais.length === 0) return setErro("Adicione pelo menos um material.");
+    if (materiais.some((material) => !material.codigoSienge.trim() || !material.descricao.trim() || material.quantidadePorKit <= 0)) {
+      return setErro("Preencha código, descrição e uma quantidade maior que zero em todos os materiais.");
+    }
+    const codigos = materiais.map((material) => material.codigoSienge.trim().toLocaleLowerCase());
+    if (new Set(codigos).size !== codigos.length) return setErro("O mesmo Cód. Sienge aparece mais de uma vez neste Kit.");
+    setSalvando(true);
+    setErro(null);
+    try {
+      await onSalvar({
+        id: kit?.id,
+        nome: nome.trim(),
+        materiais: materiais.map((material) => ({
+          ...material,
+          codigoSienge: material.codigoSienge.trim(),
+          descricao: material.descricao.trim(),
+          detalhe: material.detalhe.trim(),
+        })),
+      });
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não foi possível salvar o Kit.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onFechar}>
+      <section className="modal-card modal-card--kit" role="dialog" aria-modal="true" aria-labelledby="kit-editor-titulo" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="manager-heading"><div><p className="eyebrow">Central de Kits</p><h2 id="kit-editor-titulo">{kit ? "Editar Kit" : "Criar Kit"}</h2><p>As quantidades informadas representam o consumo de uma unidade.</p></div><button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar">×</button></div>
+        <form className="kit-form" onSubmit={salvar}>
+          <label htmlFor="kit-nome">Nome do Kit</label>
+          <input id="kit-nome" value={nome} maxLength={80} onChange={(event) => setNome(event.target.value)} placeholder="Ex.: Kit Hidráulico" required />
+          <p className="kit-map-preview">
+            <span>Mapa associado</span>
+            <strong>{nome.trim() || "Mesmo nome do Kit"}</strong>
+            <small>{kit ? "O mapa existente será renomeado junto com o Kit." : "O mapa será criado automaticamente ao salvar."}</small>
+          </p>
+          <div className="material-form-heading"><div><p className="field-label">Materiais</p><strong>{materiais.length} item(ns)</strong></div><button className="button button--ghost" type="button" onClick={() => setMateriais((atuais) => [...atuais, materialVazio()])}>+ Adicionar material</button></div>
+          <div className="materials-editor">
+            {materiais.map((material, indice) => (
+              <fieldset className="material-editor" key={material.id}>
+                <legend>Material {indice + 1}</legend>
+                <label>Cód. Sienge<input value={material.codigoSienge} maxLength={32} onChange={(event) => atualizarMaterial(material.id, "codigoSienge", event.target.value)} required /></label>
+                <label>Descrição<input value={material.descricao} maxLength={100} onChange={(event) => atualizarMaterial(material.id, "descricao", event.target.value)} required /></label>
+                <label className="material-editor__detail">Detalhe (opcional)<input value={material.detalhe} maxLength={180} placeholder="Pode ficar em branco" onChange={(event) => atualizarMaterial(material.id, "detalhe", event.target.value)} /></label>
+                <label>Quantidade por Kit<input type="number" min="0.001" step="0.001" value={material.quantidadePorKit} onChange={(event) => atualizarMaterial(material.id, "quantidadePorKit", Number(event.target.value))} required /></label>
+                {materiais.length > 1 && <button className="material-editor__remove" type="button" onClick={() => setMateriais((atuais) => atuais.filter((item) => item.id !== material.id))}>Remover</button>}
+              </fieldset>
+            ))}
+          </div>
+          {erro && <p className="form-error" role="alert">{erro}</p>}
+          <div className="modal-card__acoes"><button className="button button--ghost" type="button" onClick={onFechar}>Cancelar</button><button className="button button--primary" type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar Kit"}</button></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+interface KitUnidadesModalProps {
+  kit: Kit;
+  onFechar: () => void;
+  onSalvar: (unidadeIds: string[]) => Promise<void>;
+}
+
+function KitUnidadesModal({ kit, onFechar, onSalvar }: KitUnidadesModalProps) {
+  const [selecionadas, setSelecionadas] = useState(() => new Set(kit.unidadeIds));
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const totalConsumo = useMemo(
+    () => kit.materiais.reduce((total, material) => total + material.quantidadePorKit * selecionadas.size, 0),
+    [kit.materiais, selecionadas],
+  );
+
+  function alternar(id: string) {
+    setSelecionadas((atuais) => {
+      const proximas = new Set(atuais);
+      if (proximas.has(id)) proximas.delete(id);
+      else proximas.add(id);
+      return proximas;
+    });
+  }
+
+  async function confirmar() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      await onSalvar([...selecionadas]);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não foi possível salvar as unidades.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onFechar}>
+      <section className="modal-card modal-card--units" role="dialog" aria-modal="true" aria-labelledby="kit-unidades-titulo" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="manager-heading"><div><p className="eyebrow">Kit · {kit.nome}</p><h2 id="kit-unidades-titulo">Selecionar unidades</h2><p>Cada unidade pode contabilizar este Kit apenas uma vez.</p></div><button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar">×</button></div>
+        <div className="units-selection-summary"><div><span>Selecionadas</span><strong>{selecionadas.size}</strong></div><div><span>Itens calculados</span><strong>{formatarQuantidade(totalConsumo)}</strong></div><div className="units-selection-actions"><button className="link-button" type="button" onClick={() => setSelecionadas(new Set(UNIDADES.map((unidade) => unidade.id)))}>Selecionar todas</button><button className="link-button" type="button" onClick={() => setSelecionadas(new Set())}>Limpar</button></div></div>
+        <div className="unit-selector">
+          {BLOCOS.map((bloco) => (
+            <fieldset key={bloco.id}><legend>{bloco.nome}</legend><div>
+              {[...bloco.unidades].sort((a, b) => a.numero.localeCompare(b.numero)).map((unidade) => (
+                <label className={selecionadas.has(unidade.id) ? "unit-option unit-option--selected" : "unit-option"} key={unidade.id}>
+                  <input type="checkbox" checked={selecionadas.has(unidade.id)} onChange={() => alternar(unidade.id)} />
+                  <span>{unidade.numero}</span>
+                </label>
+              ))}
+            </div></fieldset>
+          ))}
+        </div>
+        {erro && <p className="form-error" role="alert">{erro}</p>}
+        <div className="modal-card__acoes"><button className="button button--ghost" type="button" onClick={onFechar}>Cancelar</button><button className="button button--primary" type="button" disabled={salvando} onClick={() => void confirmar()}>{salvando ? "Salvando…" : `Salvar ${selecionadas.size} unidade(s)`}</button></div>
+      </section>
+    </div>
+  );
+}

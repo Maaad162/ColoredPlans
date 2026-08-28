@@ -2,6 +2,9 @@ import type { User } from "firebase/auth";
 import { useEffect, useState } from "react";
 import "./App.css";
 import { AuthLoading, AuthScreen } from "./components/Auth/AuthScreen";
+import { CentralKits } from "./components/CentralKits/CentralKits";
+import { ConfigurarConta } from "./components/Conta/ConfigurarConta";
+import { GerenciarLegendas } from "./components/GerenciarLegendas/GerenciarLegendas";
 import { Legenda } from "./components/Legenda/Legenda";
 import { MapTabs } from "./components/MapTabs/MapTabs";
 import { PainelUnidade } from "./components/PainelUnidade/PainelUnidade";
@@ -9,11 +12,14 @@ import { Planta } from "./components/Planta/Planta";
 import { Toolbar } from "./components/Toolbar/Toolbar";
 import { TOTAL_UNIDADES } from "./data/planta";
 import { useAuth } from "./hooks/useAuth";
+import { useLegendas } from "./hooks/useLegendas";
+import { usePerfil } from "./hooks/usePerfil";
 import { usePlanta } from "./hooks/usePlanta";
 import {
   baixarMarcacoes,
   validarArquivoImportacao,
 } from "./services/storage";
+import type { PerfilUsuario } from "./types/planta";
 
 export default function App() {
   const { usuario, carregando, entrar, sair } = useAuth();
@@ -21,18 +27,50 @@ export default function App() {
   if (carregando) return <AuthLoading />;
   if (!usuario) return <AuthScreen onEntrar={entrar} />;
 
-  return <AplicacaoMapas key={usuario.uid} usuario={usuario} onSair={sair} />;
+  return <ContaAutenticada key={usuario.uid} usuario={usuario} onSair={sair} />;
 }
 
-interface AplicacaoMapasProps {
+interface ContaAutenticadaProps {
   usuario: User;
   onSair: () => Promise<void>;
 }
 
-function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
-  const planta = usePlanta(usuario.uid);
+function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
+  const perfilState = usePerfil(usuario.uid, usuario.email ?? "");
+  if (perfilState.carregando) return <AuthLoading />;
+  if (!perfilState.perfil) {
+    return (
+      <ConfigurarConta
+        email={usuario.email ?? "Usuário autenticado"}
+        erro={perfilState.erro}
+        onConfigurar={perfilState.configurar}
+        onSair={onSair}
+      />
+    );
+  }
+  return (
+    <AplicacaoMapas
+      usuario={usuario}
+      perfil={perfilState.perfil}
+      onSair={onSair}
+    />
+  );
+}
+
+interface AplicacaoMapasProps extends ContaAutenticadaProps {
+  perfil: PerfilUsuario;
+}
+
+function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
+  const legendasState = useLegendas(usuario.uid);
+  const planta = usePlanta(
+    usuario.uid,
+    legendasState.legendas,
+    perfil.tipoConta === "estoque",
+  );
   const [zoom, setZoom] = useState(0.8);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  const [secaoAtiva, setSecaoAtiva] = useState<"mapas" | "kits">("mapas");
 
   useEffect(() => {
     if (!mensagem) return;
@@ -40,13 +78,17 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
     return () => window.clearTimeout(timeout);
   }, [mensagem]);
 
-  if (!planta.abaAtual) return <AuthLoading />;
+  if (legendasState.carregando || !planta.abaAtual) return <AuthLoading />;
 
   async function importar(arquivo: File) {
     try {
       const texto = await arquivo.text();
       const conteudo: unknown = JSON.parse(texto);
-      const novasMarcacoes = validarArquivoImportacao(conteudo, planta.unidades);
+      const novasMarcacoes = validarArquivoImportacao(
+        conteudo,
+        planta.unidades,
+        planta.statuses,
+      );
       const confirmado = window.confirm(
         `A importação substituirá as marcações da aba “${planta.abaAtual.nome}”. Deseja continuar?`,
       );
@@ -96,6 +138,10 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
                 : "Sincronizado"}
           </span>
           <span className="header-meta__divider" />
+          <span className={`account-badge account-badge--${perfil.tipoConta}`}>
+            {perfil.tipoConta === "estoque" ? "Estoque" : "Apontamento"}
+          </span>
+          <span className="header-meta__divider" />
           <span>{TOTAL_UNIDADES} unidades</span>
           <span className="header-meta__divider" />
           <span className="header-user" title={usuario.email ?? "Usuário autenticado"}>
@@ -113,13 +159,45 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
             {planta.erroSincronizacao}
           </div>
         )}
+        {legendasState.erro && (
+          <div className="sync-warning" role="alert">{legendasState.erro}</div>
+        )}
+
+        <nav className="section-nav" aria-label="Áreas da aplicação">
+          <div className="section-nav__tabs">
+            <button type="button" className={secaoAtiva === "mapas" ? "section-nav__tab section-nav__tab--active" : "section-nav__tab"} onClick={() => setSecaoAtiva("mapas")}>Mapas e marcações</button>
+            {perfil.tipoConta === "estoque" && (
+              <button type="button" className={secaoAtiva === "kits" ? "section-nav__tab section-nav__tab--active" : "section-nav__tab"} onClick={() => setSecaoAtiva("kits")}>Central de Kits</button>
+            )}
+          </div>
+          <GerenciarLegendas
+            legendas={legendasState.legendas}
+            usoPorLegenda={planta.usoPorLegenda}
+            onCriar={legendasState.criar}
+            onEditar={legendasState.editar}
+            onExcluir={legendasState.excluir}
+            onMensagem={setMensagem}
+          />
+        </nav>
+
+        {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
+          <CentralKits
+            usuarioId={usuario.uid}
+            onMensagem={setMensagem}
+            onAbrirMapa={(mapaId) => {
+              planta.selecionarAba(mapaId);
+              setSecaoAtiva("mapas");
+              setMensagem("Mapa associado ao Kit aberto.");
+            }}
+          />
+        ) : (
+        <>
         <MapTabs
           abas={planta.abas}
           abaAtivaId={planta.abaAtual.id}
           onSelecionar={planta.selecionarAba}
           onExcluir={(id, nome) => {
-            planta.excluirAba(id);
-            setMensagem(`Aba “${nome}” apagada.`);
+            if (planta.excluirAba(id)) setMensagem(`Aba “${nome}” apagada.`);
           }}
           onCriar={(nome) => {
             const criada = planta.criarAba(nome);
@@ -130,6 +208,7 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
 
         <Toolbar
           blocos={planta.blocos}
+          legendas={planta.statuses}
           nomeMapaAtivo={planta.abaAtual.nome}
           blocoFiltro={planta.blocoFiltro}
           statusFiltro={planta.statusFiltro}
@@ -160,8 +239,13 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
           <section className="map-column" aria-labelledby="planta-titulo">
             <div className="map-heading">
               <div>
-                <p className="eyebrow">Serviço · {planta.abaAtual.nome}</p>
+                <p className="eyebrow">{planta.abaAtual.tipo === "kit" ? "Mapa de Kit" : "Serviço"} · {planta.abaAtual.nome}</p>
                 <h2 id="planta-titulo">Planta do empreendimento</h2>
+                {planta.abaAtual.tipo === "kit" && (
+                  <p className="kit-map-summary">
+                    <strong>{planta.abaAtual.kitUnidadeIds.length}</strong> unidade(s) receberam este Kit. O contorno verde indica a utilização.
+                  </p>
+                )}
               </div>
               <p className="map-hint">
                 {planta.statusPincel === "sem-marcacao"
@@ -174,17 +258,21 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
             <Planta
               blocos={planta.blocos}
               marcacoes={planta.marcacoes}
+              legendas={planta.statuses}
               selecionadaId={planta.unidadeSelecionada?.id ?? null}
               unidadeAtenuada={planta.unidadeAtenuada}
               onSelecionar={planta.selecionarUnidade}
               zoom={zoom}
               onZoomChange={setZoom}
+              mapaKit={planta.abaAtual.tipo === "kit"}
+              kitUnidadeIds={planta.abaAtual.kitUnidadeIds}
             />
           </section>
 
           <aside className="sidebar" aria-label="Informações da planta">
             <PainelUnidade
               unidade={planta.unidadeSelecionada}
+              legendas={planta.statuses}
               statusId={
                 planta.unidadeSelecionada
                   ? planta.marcacoes[planta.unidadeSelecionada.id] ?? null
@@ -196,9 +284,15 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
                 }
               }}
             />
-            <Legenda contagens={planta.contagens} total={TOTAL_UNIDADES} />
+            <Legenda
+              legendas={planta.statuses}
+              contagens={planta.contagens}
+              total={TOTAL_UNIDADES}
+            />
           </aside>
         </div>
+        </>
+        )}
       </main>
 
       {mensagem && (
