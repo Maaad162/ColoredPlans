@@ -1,9 +1,14 @@
 import { getStatus } from "../../config/statuses";
-import type { StatusId, Unidade as UnidadeType } from "../../types/planta";
+import type {
+  StatusConfig,
+  StatusId,
+  Unidade as UnidadeType,
+} from "../../types/planta";
 
 interface UnidadeProps {
   unidade: UnidadeType;
   statusId: StatusId | null;
+  legendas: StatusConfig[];
   selecionada: boolean;
   atenuada: boolean;
   onSelecionar: (id: string) => void;
@@ -12,11 +17,12 @@ interface UnidadeProps {
 export function Unidade({
   unidade,
   statusId,
+  legendas,
   selecionada,
   atenuada,
   onSelecionar,
 }: UnidadeProps) {
-  const status = getStatus(statusId);
+  const status = getStatus(statusId, legendas);
   const descricao = `Bloco ${unidade.bloco}, unidade ${unidade.numero}, ${status.nome}`;
   const centroX = unidade.x + unidade.width / 2;
   const centroY = unidade.y + unidade.height / 2;

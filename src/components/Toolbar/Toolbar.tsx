@@ -1,8 +1,8 @@
 import { useRef } from "react";
-import { STATUSES } from "../../config/statuses";
 import type {
   Bloco,
   FerramentaPintura,
+  StatusConfig,
   StatusFilter,
 } from "../../types/planta";
 import { Icon } from "../Icon";
@@ -10,6 +10,7 @@ import { PaletaStatus } from "../PaletaStatus/PaletaStatus";
 
 interface ToolbarProps {
   blocos: Bloco[];
+  legendas: StatusConfig[];
   nomeMapaAtivo: string;
   blocoFiltro: string;
   statusFiltro: StatusFilter;
@@ -26,6 +27,7 @@ interface ToolbarProps {
 
 export function Toolbar({
   blocos,
+  legendas,
   nomeMapaAtivo,
   blocoFiltro,
   statusFiltro,
@@ -71,7 +73,7 @@ export function Toolbar({
               onChange={(event) => onStatusFiltro(event.target.value as StatusFilter)}
             >
               <option value="todos">Todos os status</option>
-              {STATUSES.map((status) => (
+              {legendas.map((status) => (
                 <option key={status.id} value={status.id}>{status.nome}</option>
               ))}
               <option value="sem-marcacao">Sem marcação</option>
@@ -87,6 +89,7 @@ export function Toolbar({
         </div>
         <PaletaStatus
           valor={statusPincel}
+          legendas={legendas}
           onChange={(status) => {
             const ferramenta: FerramentaPintura = status ?? "sem-marcacao";
             onStatusPincel(ferramenta === statusPincel ? null : ferramenta);

@@ -1,14 +1,12 @@
-import { STATUSES } from "../config/statuses";
 import type {
   ArquivoMarcacoes,
   Marcacoes,
+  StatusConfig,
   StatusId,
   Unidade,
 } from "../types/planta";
 
 const ABA_ATIVA_STORAGE_PREFIX = "lm-colored-plans:aba-ativa:v3";
-
-const idsDeStatus = new Set(STATUSES.map((status) => status.id));
 
 export function carregarAbaAtiva(usuarioId: string): string | null {
   try {
@@ -71,6 +69,7 @@ export function baixarMarcacoes(
 export function validarArquivoImportacao(
   conteudo: unknown,
   unidades: Unidade[],
+  legendas: StatusConfig[],
 ): Marcacoes {
   if (!conteudo || typeof conteudo !== "object") {
     throw new Error("O arquivo não contém um objeto JSON válido.");
@@ -82,6 +81,7 @@ export function validarArquivoImportacao(
   }
 
   const idsValidos = new Set(unidades.map((unidade) => unidade.id));
+  const idsDeStatus = new Set(legendas.map((legenda) => legenda.id));
   const encontrados = new Set<string>();
   const marcacoes: Marcacoes = {};
 

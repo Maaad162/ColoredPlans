@@ -1,9 +1,10 @@
-import { STATUSES, STATUS_SEM_MARCACAO } from "../../config/statuses";
-import type { StatusId } from "../../types/planta";
+import { STATUS_SEM_MARCACAO } from "../../config/statuses";
+import type { StatusConfig, StatusId } from "../../types/planta";
 
 interface PaletaStatusProps {
   valor: StatusId | "sem-marcacao" | null;
   onChange: (status: StatusId | null) => void;
+  legendas: StatusConfig[];
   compacta?: boolean;
   incluirLimpar?: boolean;
 }
@@ -11,6 +12,7 @@ interface PaletaStatusProps {
 export function PaletaStatus({
   valor,
   onChange,
+  legendas,
   compacta = false,
   incluirLimpar = false,
 }: PaletaStatusProps) {
@@ -20,7 +22,7 @@ export function PaletaStatus({
       role="group"
       aria-label="Escolha um status"
     >
-      {STATUSES.map((status) => (
+      {legendas.map((status) => (
         <button
           key={status.id}
           type="button"

@@ -6,6 +6,51 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    function tipoContaValido(tipoConta) {
+      return tipoConta == 'apontamento' || tipoConta == 'estoque';
+    }
+
+    function perfilEstoque(userId) {
+      return eProprioUsuario(userId)
+             && get(/databases/$(database)/documents/usuarios/$(userId)).data.tipoConta == 'estoque';
+    }
+
+    function legendaValida(data, userId) {
+      return data.userId == userId
+             && data.nome is string
+             && data.nome.size() > 0
+             && data.nome.size() <= 48
+             && data.cor is string
+             && data.cor.matches('^#[0-9a-fA-F]{6}$');
+    }
+
+    function kitValido(data, userId) {
+      return data.userId == userId
+             && data.nome is string
+             && data.nome.size() > 0
+             && data.nome.size() <= 80
+             && data.materiais is list
+             && data.materiais.size() > 0
+             && data.unidadeIds is list
+             && data.unidadeIds.size() <= 100
+             && data.unidadeIds.toSet().size() == data.unidadeIds.size();
+    }
+
+    match /usuarios/{userId} {
+      allow read: if eProprioUsuario(userId);
+
+      allow create: if eProprioUsuario(userId)
+                    && request.resource.data.userId == userId
+                    && tipoContaValido(request.resource.data.tipoConta);
+
+      allow update: if eProprioUsuario(userId)
+                    && resource.data.userId == userId
+                    && request.resource.data.userId == userId
+                    && request.resource.data.tipoConta == resource.data.tipoConta;
+
+      allow delete: if false;
+    }
+
     match /usuarios/{userId}/obras/{obraId}/mapas/{mapaId} {
       allow read: if eProprioUsuario(userId)
                   && resource.data.userId == userId;
@@ -18,6 +63,36 @@ service cloud.firestore {
                     && request.resource.data.userId == userId;
 
       allow delete: if eProprioUsuario(userId)
+                    && resource.data.userId == userId;
+    }
+
+    match /usuarios/{userId}/legendas/{legendaId} {
+      allow read: if eProprioUsuario(userId)
+                  && resource.data.userId == userId;
+
+      allow create: if eProprioUsuario(userId)
+                    && legendaValida(request.resource.data, userId);
+
+      allow update: if eProprioUsuario(userId)
+                    && resource.data.userId == userId
+                    && legendaValida(request.resource.data, userId);
+
+      allow delete: if eProprioUsuario(userId)
+                    && resource.data.userId == userId;
+    }
+
+    match /usuarios/{userId}/kits/{kitId} {
+      allow read: if perfilEstoque(userId)
+                  && resource.data.userId == userId;
+
+      allow create: if perfilEstoque(userId)
+                    && kitValido(request.resource.data, userId);
+
+      allow update: if perfilEstoque(userId)
+                    && resource.data.userId == userId
+                    && kitValido(request.resource.data, userId);
+
+      allow delete: if perfilEstoque(userId)
                     && resource.data.userId == userId;
     }
 

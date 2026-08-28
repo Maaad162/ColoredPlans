@@ -1,11 +1,16 @@
 import { useRef, useState } from "react";
-import type { Bloco as BlocoType, Marcacoes } from "../../types/planta";
+import type {
+  Bloco as BlocoType,
+  Marcacoes,
+  StatusConfig,
+} from "../../types/planta";
 import { Bloco } from "./Bloco";
 import "./Planta.css";
 
 interface PlantaProps {
   blocos: BlocoType[];
   marcacoes: Marcacoes;
+  legendas: StatusConfig[];
   selecionadaId: string | null;
   unidadeAtenuada: (id: string) => boolean;
   onSelecionar: (id: string) => void;
@@ -23,6 +28,7 @@ interface PanState {
 export function Planta({
   blocos,
   marcacoes,
+  legendas,
   selecionadaId,
   unidadeAtenuada,
   onSelecionar,
@@ -131,6 +137,7 @@ export function Planta({
               key={bloco.id}
               bloco={bloco}
               marcacoes={marcacoes}
+              legendas={legendas}
               selecionadaId={selecionadaId}
               unidadeAtenuada={unidadeAtenuada}
               onSelecionar={onSelecionar}

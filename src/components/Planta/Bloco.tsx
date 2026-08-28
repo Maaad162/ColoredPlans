@@ -1,9 +1,14 @@
-import type { Bloco as BlocoType, Marcacoes } from "../../types/planta";
+import type {
+  Bloco as BlocoType,
+  Marcacoes,
+  StatusConfig,
+} from "../../types/planta";
 import { Unidade } from "./Unidade";
 
 interface BlocoProps {
   bloco: BlocoType;
   marcacoes: Marcacoes;
+  legendas: StatusConfig[];
   selecionadaId: string | null;
   unidadeAtenuada: (id: string) => boolean;
   onSelecionar: (id: string) => void;
@@ -12,6 +17,7 @@ interface BlocoProps {
 export function Bloco({
   bloco,
   marcacoes,
+  legendas,
   selecionadaId,
   unidadeAtenuada,
   onSelecionar,
@@ -34,6 +40,7 @@ export function Bloco({
           key={unidade.id}
           unidade={unidade}
           statusId={marcacoes[unidade.id] ?? null}
+          legendas={legendas}
           selecionada={selecionadaId === unidade.id}
           atenuada={unidadeAtenuada(unidade.id)}
           onSelecionar={onSelecionar}

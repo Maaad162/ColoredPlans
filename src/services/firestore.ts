@@ -14,13 +14,11 @@ import {
   writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
-import { STATUSES } from "../config/statuses";
 import { db } from "../config/firebase";
 import type { MapaServico, Marcacoes, StatusId } from "../types/planta";
 
 export const OBRA_ID = "obra-principal";
 
-const statusValidos = new Set(STATUSES.map((status) => status.id));
 const mapasLegadosCollection = collection(db, "obras", OBRA_ID, "mapas");
 
 function mapasCollection(usuarioId: string) {
@@ -41,8 +39,8 @@ function mapaDocument(usuarioId: string, id: string) {
 function normalizarMarcacoes(valor: unknown): Marcacoes {
   if (!valor || typeof valor !== "object" || Array.isArray(valor)) return {};
   return Object.fromEntries(
-    Object.entries(valor).filter(([, status]) =>
-      statusValidos.has(status as StatusId),
+    Object.entries(valor).filter(
+      ([, status]) => typeof status === "string" && status.length <= 128,
     ),
   ) as Marcacoes;
 }

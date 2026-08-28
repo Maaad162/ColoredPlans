@@ -1,19 +1,21 @@
 import { getStatus } from "../../config/statuses";
-import type { StatusId, Unidade } from "../../types/planta";
+import type { StatusConfig, StatusId, Unidade } from "../../types/planta";
 import { PaletaStatus } from "../PaletaStatus/PaletaStatus";
 
 interface PainelUnidadeProps {
   unidade: Unidade | null;
   statusId: StatusId | null;
+  legendas: StatusConfig[];
   onDefinirStatus: (status: StatusId | null) => void;
 }
 
 export function PainelUnidade({
   unidade,
   statusId,
+  legendas,
   onDefinirStatus,
 }: PainelUnidadeProps) {
-  const status = getStatus(statusId);
+  const status = getStatus(statusId, legendas);
 
   return (
     <section className="side-card painel-unidade" aria-labelledby="unidade-titulo">
@@ -56,7 +58,11 @@ export function PainelUnidade({
 
           <div className="painel-unidade__edicao">
             <p className="field-label">Alterar status</p>
-            <PaletaStatus valor={statusId} onChange={onDefinirStatus} />
+            <PaletaStatus
+              valor={statusId}
+              legendas={legendas}
+              onChange={onDefinirStatus}
+            />
           </div>
 
           <button

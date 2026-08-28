@@ -1,9 +1,4 @@
-export type StatusId =
-  | "concluido"
-  | "andamento"
-  | "pendente"
-  | "vistoria"
-  | "outro";
+export type StatusId = string;
 
 export type StatusFilter = StatusId | "sem-marcacao" | "todos";
 
@@ -15,6 +10,38 @@ export interface StatusConfig {
   cor: string;
   corTexto: string;
   simbolo: string;
+}
+
+export type TipoConta = "apontamento" | "estoque";
+
+export interface PerfilUsuario {
+  userId: string;
+  email: string;
+  tipoConta: TipoConta;
+  criadoEm: string;
+}
+
+export interface LegendaUsuario extends StatusConfig {
+  userId: string;
+  criadoEm: string;
+}
+
+export interface MaterialKit {
+  id: string;
+  codigoSienge: string;
+  descricao: string;
+  detalhe: string;
+  quantidadePorKit: number;
+}
+
+export interface Kit {
+  id: string;
+  userId: string;
+  nome: string;
+  materiais: MaterialKit[];
+  unidadeIds: string[];
+  criadoEm: string;
+  atualizadoEm: string;
 }
 
 export interface Unidade {
