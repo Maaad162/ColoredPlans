@@ -9,6 +9,7 @@ import {
   substituirMarcacoesRemotas,
 } from "../services/firestore";
 import { carregarAbaAtiva, salvarAbaAtiva } from "../services/storage";
+import { migrarKitsEMapas } from "../services/kits";
 import type {
   EstadoMapas,
   FerramentaPintura,
@@ -18,7 +19,11 @@ import type {
   StatusId,
 } from "../types/planta";
 
-export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
+export function usePlanta(
+  usuarioId: string,
+  legendas: StatusConfig[],
+  habilitarKits = false,
+) {
   const [estadoMapas, setEstadoMapas] = useState<EstadoMapas>(() => ({
     version: 3,
     abaAtivaId: carregarAbaAtiva(usuarioId) ?? "",
@@ -65,6 +70,7 @@ export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
     setErroSincronizacao(null);
 
     void migrarMapasLegados(usuarioId)
+      .then(() => habilitarKits ? migrarKitsEMapas(usuarioId) : undefined)
       .then(() => {
         if (!ativo) return;
         cancelarObservacao = observarMapas(
@@ -77,6 +83,8 @@ export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
                   id: "mapa-principal",
                   nome: "Mapa principal",
                   userId: usuarioId,
+                  tipo: "manual" as const,
+                  kitUnidadeIds: [],
                   marcacoes: {},
                   criadoEm: new Date().toISOString(),
                 };
@@ -110,7 +118,7 @@ export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
       ativo = false;
       cancelarObservacao?.();
     };
-  }, [usuarioId]);
+  }, [habilitarKits, usuarioId]);
 
   function registrarErro(erro: Error) {
     console.error("Falha ao sincronizar com o Firestore:", erro);
@@ -237,6 +245,8 @@ export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
       id,
       nome: nomeNormalizado,
       userId: usuarioId,
+      tipo: "manual" as const,
+      kitUnidadeIds: [],
       marcacoes: {},
       criadoEm: new Date().toISOString(),
     };
@@ -251,6 +261,8 @@ export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
   }
 
   function excluirAba(id: string) {
+    const mapa = estadoMapas.abas.find((aba) => aba.id === id);
+    if (!mapa || mapa.tipo === "kit") return false;
     setEstadoMapas((estadoAtual) => {
       if (estadoAtual.abas.length <= 1) return estadoAtual;
       const indiceExcluido = estadoAtual.abas.findIndex((aba) => aba.id === id);
@@ -265,6 +277,7 @@ export function usePlanta(usuarioId: string, legendas: StatusConfig[]) {
     });
     void excluirMapaRemoto(id, usuarioId).catch(registrarErro);
     setUnidadeSelecionadaId(null);
+    return true;
   }
 
   function unidadeAtenuada(id: string) {

@@ -7,6 +7,7 @@ import type { Kit, MaterialKit } from "../../types/planta";
 interface CentralKitsProps {
   usuarioId: string;
   onMensagem: (mensagem: string) => void;
+  onAbrirMapa: (mapaId: string) => void;
 }
 
 function gerarId(prefixo: string) {
@@ -27,7 +28,7 @@ function formatarQuantidade(valor: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
 }
 
-export function CentralKits({ usuarioId, onMensagem }: CentralKitsProps) {
+export function CentralKits({ usuarioId, onMensagem, onAbrirMapa }: CentralKitsProps) {
   const kitsState = useKits(usuarioId, true);
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Kit | "novo" | null>(null);
@@ -47,12 +48,12 @@ export function CentralKits({ usuarioId, onMensagem }: CentralKitsProps) {
     kitsState.kits.find((kit) => kit.id === selecionadoId) ?? null;
 
   async function excluir(kit: Kit) {
-    if (!window.confirm(`Excluir o kit “${kit.nome}” e seus vínculos com unidades?`)) return;
+    if (!window.confirm(`Excluir o Kit “${kit.nome}”, seu mapa associado e todas as marcações desse mapa?`)) return;
     try {
       await kitsState.excluir(kit.id);
-      onMensagem(`Kit “${kit.nome}” excluído.`);
-    } catch {
-      onMensagem("Não foi possível excluir o Kit.");
+      onMensagem(`Kit “${kit.nome}” e mapa associado excluídos.`);
+    } catch (falha) {
+      onMensagem(falha instanceof Error ? falha.message : "Não foi possível excluir o Kit.");
     }
   }
 
@@ -89,7 +90,7 @@ export function CentralKits({ usuarioId, onMensagem }: CentralKitsProps) {
                 onClick={() => setSelecionadoId(kit.id)}
               >
                 <span className="kit-list-item__icon" aria-hidden="true">▦</span>
-                <span><strong>{kit.nome}</strong><small>{kit.unidadeIds.length} unidades · {kit.materiais.length} materiais</small></span>
+                <span><strong>{kit.nome}</strong><small>{kit.unidadeIds.length} unidades · {kit.materiais.length} materiais</small><small>Mapa: {kit.nome}</small></span>
               </button>
             ))}
           </aside>
@@ -99,6 +100,7 @@ export function CentralKits({ usuarioId, onMensagem }: CentralKitsProps) {
               onEditar={() => setEditor(selecionado)}
               onExcluir={() => void excluir(selecionado)}
               onVincular={() => setVinculando(selecionado)}
+              onAbrirMapa={() => onAbrirMapa(selecionado.mapaId)}
             />
           )}
         </div>
@@ -115,8 +117,8 @@ export function CentralKits({ usuarioId, onMensagem }: CentralKitsProps) {
               setSelecionadoId(id);
               setEditor(null);
               onMensagem(`Kit “${dados.nome.trim()}” salvo.`);
-            } catch {
-              throw new Error("Não foi possível salvar o Kit.");
+            } catch (falha) {
+              throw new Error(falha instanceof Error ? falha.message : "Não foi possível salvar o Kit.");
             }
           }}
         />
@@ -128,19 +130,12 @@ export function CentralKits({ usuarioId, onMensagem }: CentralKitsProps) {
           kit={vinculando}
           onFechar={() => setVinculando(null)}
           onSalvar={async (selecionadas) => {
-            const anteriores = new Set(vinculando.unidadeIds);
-            const proximas = new Set(selecionadas);
-            const adicionar = selecionadas.filter((id) => !anteriores.has(id));
-            const remover = vinculando.unidadeIds.filter((id) => !proximas.has(id));
             try {
-              await Promise.all([
-                kitsState.aplicar(vinculando.id, adicionar),
-                kitsState.remover(vinculando.id, remover),
-              ]);
+              await kitsState.vincular(vinculando.id, selecionadas);
               setVinculando(null);
               onMensagem(`${selecionadas.length} unidade(s) vinculada(s) ao Kit “${vinculando.nome}”.`);
-            } catch {
-              throw new Error("Não foi possível atualizar as unidades do Kit.");
+            } catch (falha) {
+              throw new Error(falha instanceof Error ? falha.message : "Não foi possível atualizar as unidades do Kit.");
             }
           }}
         />
@@ -154,15 +149,17 @@ interface KitDetalhesProps {
   onEditar: () => void;
   onExcluir: () => void;
   onVincular: () => void;
+  onAbrirMapa: () => void;
 }
 
-function KitDetalhes({ kit, onEditar, onExcluir, onVincular }: KitDetalhesProps) {
+function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
   const consumo = calcularConsumoKit(kit);
   return (
     <article className="kit-details">
       <header className="kit-details__header">
         <div><p className="eyebrow">Resumo de utilização</p><h3>{kit.nome}</h3></div>
         <div className="kit-details__actions">
+          <button className="button button--secondary" type="button" onClick={onAbrirMapa} disabled={!kit.mapaId}>Abrir mapa</button>
           <button className="button button--secondary" type="button" onClick={onEditar}>Editar</button>
           <button className="button button--secondary" type="button" onClick={onVincular}>Selecionar unidades</button>
           <button className="icon-button icon-button--danger" type="button" onClick={onExcluir} aria-label="Excluir Kit">×</button>
@@ -173,6 +170,10 @@ function KitDetalhes({ kit, onEditar, onExcluir, onVincular }: KitDetalhesProps)
         <div><span>Materiais no Kit</span><strong>{kit.materiais.length}</strong></div>
         <div><span>Aplicações contabilizadas</span><strong>{kit.unidadeIds.length}</strong></div>
       </div>
+      <section className="kit-map-link" aria-label="Mapa associado">
+        <div><span>Mapa associado</span><strong>{kit.nome}</strong></div>
+        <button className="link-button" type="button" onClick={onAbrirMapa} disabled={!kit.mapaId}>Abrir em Mapas e Marcações</button>
+      </section>
       <section className="kit-section">
         <div className="kit-section__heading"><div><p className="field-label">Materiais utilizados</p><h4>Consumo calculado automaticamente</h4></div><small>Qtd/Kit × unidades atendidas</small></div>
         <div className="kit-table-wrap">
@@ -261,6 +262,11 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
         <form className="kit-form" onSubmit={salvar}>
           <label htmlFor="kit-nome">Nome do Kit</label>
           <input id="kit-nome" value={nome} maxLength={80} onChange={(event) => setNome(event.target.value)} placeholder="Ex.: Kit Hidráulico" required />
+          <p className="kit-map-preview">
+            <span>Mapa associado</span>
+            <strong>{nome.trim() || "Mesmo nome do Kit"}</strong>
+            <small>{kit ? "O mapa existente será renomeado junto com o Kit." : "O mapa será criado automaticamente ao salvar."}</small>
+          </p>
           <div className="material-form-heading"><div><p className="field-label">Materiais</p><strong>{materiais.length} item(ns)</strong></div><button className="button button--ghost" type="button" onClick={() => setMateriais((atuais) => [...atuais, materialVazio()])}>+ Adicionar material</button></div>
           <div className="materials-editor">
             {materiais.map((material, indice) => (

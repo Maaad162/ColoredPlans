@@ -38,6 +38,7 @@ export interface Kit {
   id: string;
   userId: string;
   nome: string;
+  mapaId: string;
   materiais: MaterialKit[];
   unidadeIds: string[];
   criadoEm: string;
@@ -70,6 +71,9 @@ export interface MapaServico {
   id: string;
   nome: string;
   userId: string;
+  tipo: "manual" | "kit";
+  kitId?: string;
+  kitUnidadeIds: string[];
   marcacoes: Marcacoes;
   criadoEm: string;
 }

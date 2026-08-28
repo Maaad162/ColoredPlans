@@ -63,7 +63,11 @@ interface AplicacaoMapasProps extends ContaAutenticadaProps {
 
 function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
   const legendasState = useLegendas(usuario.uid);
-  const planta = usePlanta(usuario.uid, legendasState.legendas);
+  const planta = usePlanta(
+    usuario.uid,
+    legendasState.legendas,
+    perfil.tipoConta === "estoque",
+  );
   const [zoom, setZoom] = useState(0.8);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [secaoAtiva, setSecaoAtiva] = useState<"mapas" | "kits">("mapas");
@@ -177,7 +181,15 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
         </nav>
 
         {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
-          <CentralKits usuarioId={usuario.uid} onMensagem={setMensagem} />
+          <CentralKits
+            usuarioId={usuario.uid}
+            onMensagem={setMensagem}
+            onAbrirMapa={(mapaId) => {
+              planta.selecionarAba(mapaId);
+              setSecaoAtiva("mapas");
+              setMensagem("Mapa associado ao Kit aberto.");
+            }}
+          />
         ) : (
         <>
         <MapTabs
@@ -185,8 +197,7 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
           abaAtivaId={planta.abaAtual.id}
           onSelecionar={planta.selecionarAba}
           onExcluir={(id, nome) => {
-            planta.excluirAba(id);
-            setMensagem(`Aba “${nome}” apagada.`);
+            if (planta.excluirAba(id)) setMensagem(`Aba “${nome}” apagada.`);
           }}
           onCriar={(nome) => {
             const criada = planta.criarAba(nome);
@@ -228,8 +239,13 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
           <section className="map-column" aria-labelledby="planta-titulo">
             <div className="map-heading">
               <div>
-                <p className="eyebrow">Serviço · {planta.abaAtual.nome}</p>
+                <p className="eyebrow">{planta.abaAtual.tipo === "kit" ? "Mapa de Kit" : "Serviço"} · {planta.abaAtual.nome}</p>
                 <h2 id="planta-titulo">Planta do empreendimento</h2>
+                {planta.abaAtual.tipo === "kit" && (
+                  <p className="kit-map-summary">
+                    <strong>{planta.abaAtual.kitUnidadeIds.length}</strong> unidade(s) receberam este Kit. O contorno verde indica a utilização.
+                  </p>
+                )}
               </div>
               <p className="map-hint">
                 {planta.statusPincel === "sem-marcacao"
@@ -248,6 +264,8 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
               onSelecionar={planta.selecionarUnidade}
               zoom={zoom}
               onZoomChange={setZoom}
+              mapaKit={planta.abaAtual.tipo === "kit"}
+              kitUnidadeIds={planta.abaAtual.kitUnidadeIds}
             />
           </section>
 

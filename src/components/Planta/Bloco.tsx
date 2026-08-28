@@ -11,6 +11,8 @@ interface BlocoProps {
   legendas: StatusConfig[];
   selecionadaId: string | null;
   unidadeAtenuada: (id: string) => boolean;
+  mapaKit: boolean;
+  unidadesDoKit: Set<string>;
   onSelecionar: (id: string) => void;
 }
 
@@ -20,6 +22,8 @@ export function Bloco({
   legendas,
   selecionadaId,
   unidadeAtenuada,
+  mapaKit,
+  unidadesDoKit,
   onSelecionar,
 }: BlocoProps) {
   return (
@@ -43,6 +47,8 @@ export function Bloco({
           legendas={legendas}
           selecionada={selecionadaId === unidade.id}
           atenuada={unidadeAtenuada(unidade.id)}
+          mapaKit={mapaKit}
+          kitUtilizado={unidadesDoKit.has(unidade.id)}
           onSelecionar={onSelecionar}
         />
       ))}

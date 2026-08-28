@@ -24,7 +24,35 @@ service cloud.firestore {
              && data.cor.matches('^#[0-9a-fA-F]{6}$');
     }
 
-    function kitValido(data, userId) {
+    function mapaManualValido(data) {
+      return !('kitId' in data)
+             && (!('tipo' in data) || data.tipo == 'manual')
+             && (!('kitUnidadeIds' in data)
+                 || (data.kitUnidadeIds is list && data.kitUnidadeIds.size() == 0));
+    }
+
+    function mapaKitValido(data, userId, mapaId) {
+      return perfilEstoque(userId)
+             && data.tipo == 'kit'
+             && data.kitId is string
+             && data.kitUnidadeIds is list
+             && data.kitUnidadeIds.size() <= 100
+             && data.kitUnidadeIds.toSet().size() == data.kitUnidadeIds.size()
+             && existsAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(data.kitId))
+             && getAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(data.kitId)).data.mapaId == mapaId
+             && getAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(data.kitId)).data.nome == data.nome
+             && getAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(data.kitId)).data.unidadeIds == data.kitUnidadeIds;
+    }
+
+    function mapaValido(data, userId, mapaId) {
+      return data.userId == userId
+             && data.nome is string
+             && data.nome.size() > 0
+             && data.nome.size() <= 80
+             && (mapaManualValido(data) || mapaKitValido(data, userId, mapaId));
+    }
+
+    function kitValido(data, userId, kitId) {
       return data.userId == userId
              && data.nome is string
              && data.nome.size() > 0
@@ -33,7 +61,13 @@ service cloud.firestore {
              && data.materiais.size() > 0
              && data.unidadeIds is list
              && data.unidadeIds.size() <= 100
-             && data.unidadeIds.toSet().size() == data.unidadeIds.size();
+             && data.unidadeIds.toSet().size() == data.unidadeIds.size()
+             && data.mapaId is string
+             && data.mapaId.size() > 0
+             && existsAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(data.mapaId))
+             && getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(data.mapaId)).data.kitId == kitId
+             && getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(data.mapaId)).data.nome == data.nome
+             && getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(data.mapaId)).data.kitUnidadeIds == data.unidadeIds;
     }
 
     match /usuarios/{userId} {
@@ -56,14 +90,28 @@ service cloud.firestore {
                   && resource.data.userId == userId;
 
       allow create: if eProprioUsuario(userId)
-                    && request.resource.data.userId == userId;
+                    && mapaValido(request.resource.data, userId, mapaId);
 
       allow update: if eProprioUsuario(userId)
                     && resource.data.userId == userId
-                    && request.resource.data.userId == userId;
+                    && mapaValido(request.resource.data, userId, mapaId)
+                    && (
+                      !('kitId' in resource.data)
+                      || (
+                        'kitId' in request.resource.data
+                        && request.resource.data.kitId == resource.data.kitId
+                      )
+                      || !existsAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(resource.data.kitId))
+                      || getAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(resource.data.kitId)).data.mapaId != mapaId
+                    );
 
       allow delete: if eProprioUsuario(userId)
-                    && resource.data.userId == userId;
+                    && resource.data.userId == userId
+                    && (
+                      !('kitId' in resource.data)
+                      || !existsAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(resource.data.kitId))
+                      || getAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(resource.data.kitId)).data.mapaId != mapaId
+                    );
     }
 
     match /usuarios/{userId}/legendas/{legendaId} {
@@ -86,14 +134,22 @@ service cloud.firestore {
                   && resource.data.userId == userId;
 
       allow create: if perfilEstoque(userId)
-                    && kitValido(request.resource.data, userId);
+                    && kitValido(request.resource.data, userId, kitId);
 
       allow update: if perfilEstoque(userId)
                     && resource.data.userId == userId
-                    && kitValido(request.resource.data, userId);
+                    && kitValido(request.resource.data, userId, kitId)
+                    && (
+                      !('mapaId' in resource.data)
+                      || request.resource.data.mapaId == resource.data.mapaId
+                      || !exists(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(resource.data.mapaId))
+                      || get(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(resource.data.mapaId)).data.kitId != kitId
+                    );
 
       allow delete: if perfilEstoque(userId)
-                    && resource.data.userId == userId;
+                    && resource.data.userId == userId
+                    && 'mapaId' in resource.data
+                    && !existsAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/obra-principal/mapas/$(resource.data.mapaId));
     }
 
     // Caminho antigo: disponível somente ao criador para a migração automática.

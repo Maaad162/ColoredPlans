@@ -53,6 +53,7 @@ export function MapTabs({
   }
 
   function handleExcluir(aba: MapaServico) {
+    if (aba.tipo === "kit") return;
     const totalMarcado = Object.values(aba.marcacoes).filter(Boolean).length;
     const detalhe = totalMarcado
       ? ` Ela contém ${totalMarcado} unidade${totalMarcado === 1 ? "" : "s"} marcada${
@@ -75,7 +76,10 @@ export function MapTabs({
         <div className="map-tabs" role="tablist" aria-label="Serviços da obra">
           {abas.map((aba) => {
             const ativa = aba.id === abaAtivaId;
-            const totalMarcado = Object.values(aba.marcacoes).filter(Boolean).length;
+            const totalMarcado =
+              aba.tipo === "kit"
+                ? aba.kitUnidadeIds.length
+                : Object.values(aba.marcacoes).filter(Boolean).length;
             return (
               <div
                 className={`map-tab-item${ativa ? " map-tab-item--ativa" : ""}`}
@@ -91,13 +95,13 @@ export function MapTabs({
                   className={`map-tab${ativa ? " map-tab--ativa" : ""}`}
                   onClick={() => onSelecionar(aba.id)}
                 >
-                  <span className="map-tab__dot" aria-hidden="true" />
+                  <span className={`map-tab__dot${aba.tipo === "kit" ? " map-tab__dot--kit" : ""}`} aria-hidden="true" />
                   <span>{aba.nome}</span>
-                  <small title={`${totalMarcado} unidades marcadas`}>
+                  <small title={`${totalMarcado} ${aba.tipo === "kit" ? "unidades com Kit" : "unidades marcadas"}`}>
                     {totalMarcado}
                   </small>
                 </button>
-                {abas.length > 1 && (
+                {abas.length > 1 && aba.tipo !== "kit" && (
                   <button
                     type="button"
                     className="map-tab__delete"

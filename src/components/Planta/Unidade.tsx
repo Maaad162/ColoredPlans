@@ -11,6 +11,8 @@ interface UnidadeProps {
   legendas: StatusConfig[];
   selecionada: boolean;
   atenuada: boolean;
+  mapaKit: boolean;
+  kitUtilizado: boolean;
   onSelecionar: (id: string) => void;
 }
 
@@ -20,10 +22,17 @@ export function Unidade({
   legendas,
   selecionada,
   atenuada,
+  mapaKit,
+  kitUtilizado,
   onSelecionar,
 }: UnidadeProps) {
   const status = getStatus(statusId, legendas);
-  const descricao = `Bloco ${unidade.bloco}, unidade ${unidade.numero}, ${status.nome}`;
+  const usoKit = mapaKit
+    ? kitUtilizado
+      ? ", Kit utilizado"
+      : ", Kit não utilizado"
+    : "";
+  const descricao = `Bloco ${unidade.bloco}, unidade ${unidade.numero}, ${status.nome}${usoKit}`;
   const centroX = unidade.x + unidade.width / 2;
   const centroY = unidade.y + unidade.height / 2;
 
@@ -38,7 +47,7 @@ export function Unidade({
     <g
       className={`unidade${selecionada ? " unidade--selecionada" : ""}${
         atenuada ? " unidade--atenuada" : ""
-      }`}
+      }${mapaKit ? kitUtilizado ? " unidade--kit-utilizado" : " unidade--kit-nao-utilizado" : ""}`}
       role="button"
       tabIndex={0}
       aria-label={descricao}
@@ -46,7 +55,7 @@ export function Unidade({
       onClick={() => onSelecionar(unidade.id)}
       onKeyDown={handleKeyDown}
     >
-      <title>{`Bloco ${unidade.bloco}\nUnidade ${unidade.numero}\n${status.nome}`}</title>
+      <title>{`Bloco ${unidade.bloco}\nUnidade ${unidade.numero}\n${status.nome}${usoKit}`}</title>
       <rect
         className="unidade__lote"
         x={unidade.x}
@@ -76,6 +85,15 @@ export function Unidade({
         >
           {status.simbolo}
         </text>
+      )}
+      {mapaKit && kitUtilizado && (
+        <circle
+          className="unidade__kit-marca"
+          cx={unidade.x + 5}
+          cy={unidade.y + 5}
+          r="3"
+          aria-hidden="true"
+        />
       )}
     </g>
   );

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  aplicarKitEmUnidades,
+  atualizarUnidadesKit,
   excluirKitRemoto,
+  migrarKitsEMapas,
   observarKits,
-  removerKitDeUnidades,
   salvarKitRemoto,
   type DadosKit,
 } from "../services/kits";
@@ -20,20 +20,44 @@ export function useKits(usuarioId: string, habilitado: boolean) {
       setCarregando(false);
       return;
     }
+
+    let ativo = true;
+    let cancelarObservacao: (() => void) | undefined;
     setCarregando(true);
-    return observarKits(
-      usuarioId,
-      (atuais) => {
-        setKits(atuais);
-        setErro(null);
+    setErro(null);
+
+    void migrarKitsEMapas(usuarioId)
+      .then(() => {
+        if (!ativo) return;
+        cancelarObservacao = observarKits(
+          usuarioId,
+          (atuais) => {
+            setKits(atuais);
+            setErro(null);
+            setCarregando(false);
+          },
+          (falha) => {
+            console.error("Falha ao sincronizar kits:", falha);
+            setErro("Não foi possível sincronizar a Central de Kits.");
+            setCarregando(false);
+          },
+        );
+      })
+      .catch((falha: unknown) => {
+        if (!ativo) return;
+        console.error("Falha ao migrar kits e mapas:", falha);
+        setErro(
+          falha instanceof Error
+            ? `Não foi possível associar Kits e mapas: ${falha.message}`
+            : "Não foi possível associar os Kits aos mapas.",
+        );
         setCarregando(false);
-      },
-      (falha) => {
-        console.error("Falha ao sincronizar kits:", falha);
-        setErro("Não foi possível sincronizar a Central de Kits.");
-        setCarregando(false);
-      },
-    );
+      });
+
+    return () => {
+      ativo = false;
+      cancelarObservacao?.();
+    };
   }, [habilitado, usuarioId]);
 
   return {
@@ -42,9 +66,7 @@ export function useKits(usuarioId: string, habilitado: boolean) {
     erro,
     salvar: (dados: DadosKit) => salvarKitRemoto(usuarioId, dados),
     excluir: (kitId: string) => excluirKitRemoto(usuarioId, kitId),
-    aplicar: (kitId: string, unidadeIds: string[]) =>
-      aplicarKitEmUnidades(usuarioId, kitId, unidadeIds),
-    remover: (kitId: string, unidadeIds: string[]) =>
-      removerKitDeUnidades(usuarioId, kitId, unidadeIds),
+    vincular: (kitId: string, unidadeIds: string[]) =>
+      atualizarUnidadesKit(usuarioId, kitId, unidadeIds),
   };
 }
