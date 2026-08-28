@@ -229,8 +229,8 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
     event.preventDefault();
     if (!nome.trim()) return setErro("Informe o nome do Kit.");
     if (materiais.length === 0) return setErro("Adicione pelo menos um material.");
-    if (materiais.some((material) => !material.codigoSienge.trim() || !material.descricao.trim() || !material.detalhe.trim() || material.quantidadePorKit <= 0)) {
-      return setErro("Preencha código, descrição, detalhe e uma quantidade maior que zero em todos os materiais.");
+    if (materiais.some((material) => !material.codigoSienge.trim() || !material.descricao.trim() || material.quantidadePorKit <= 0)) {
+      return setErro("Preencha código, descrição e uma quantidade maior que zero em todos os materiais.");
     }
     const codigos = materiais.map((material) => material.codigoSienge.trim().toLocaleLowerCase());
     if (new Set(codigos).size !== codigos.length) return setErro("O mesmo Cód. Sienge aparece mais de uma vez neste Kit.");
@@ -268,7 +268,7 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
                 <legend>Material {indice + 1}</legend>
                 <label>Cód. Sienge<input value={material.codigoSienge} maxLength={32} onChange={(event) => atualizarMaterial(material.id, "codigoSienge", event.target.value)} required /></label>
                 <label>Descrição<input value={material.descricao} maxLength={100} onChange={(event) => atualizarMaterial(material.id, "descricao", event.target.value)} required /></label>
-                <label className="material-editor__detail">Detalhe<input value={material.detalhe} maxLength={180} onChange={(event) => atualizarMaterial(material.id, "detalhe", event.target.value)} required /></label>
+                <label className="material-editor__detail">Detalhe (opcional)<input value={material.detalhe} maxLength={180} placeholder="Pode ficar em branco" onChange={(event) => atualizarMaterial(material.id, "detalhe", event.target.value)} /></label>
                 <label>Quantidade por Kit<input type="number" min="0.001" step="0.001" value={material.quantidadePorKit} onChange={(event) => atualizarMaterial(material.id, "quantidadePorKit", Number(event.target.value))} required /></label>
                 {materiais.length > 1 && <button className="material-editor__remove" type="button" onClick={() => setMateriais((atuais) => atuais.filter((item) => item.id !== material.id))}>Remover</button>}
               </fieldset>
