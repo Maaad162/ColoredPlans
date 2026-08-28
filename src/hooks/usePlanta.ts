@@ -5,14 +5,11 @@ import {
   atualizarStatusRemoto,
   criarMapaRemoto,
   excluirMapaRemoto,
-  migrarMapasLocais,
+  migrarMapasLegados,
   observarMapas,
   substituirMarcacoesRemotas,
 } from "../services/firestore";
-import {
-  carregarEstadoMapas,
-  salvarEstadoMapas,
-} from "../services/storage";
+import { carregarAbaAtiva, salvarAbaAtiva } from "../services/storage";
 import type {
   EstadoMapas,
   FerramentaPintura,
@@ -22,10 +19,12 @@ import type {
 } from "../types/planta";
 
 export function usePlanta(usuarioId: string) {
-  const [estadoMapas, setEstadoMapas] =
-    useState<EstadoMapas>(carregarEstadoMapas);
-  const estadoInicial = useRef(estadoMapas);
-  const migracaoIniciada = useRef(false);
+  const [estadoMapas, setEstadoMapas] = useState<EstadoMapas>(() => ({
+    version: 3,
+    abaAtivaId: carregarAbaAtiva(usuarioId) ?? "",
+    abas: [],
+  }));
+  const mapaInicialEmCriacao = useRef(false);
   const [sincronizando, setSincronizando] = useState(true);
   const [erroSincronizacao, setErroSincronizacao] = useState<string | null>(null);
   const [unidadeSelecionadaId, setUnidadeSelecionadaId] = useState<string | null>(
@@ -37,37 +36,63 @@ export function usePlanta(usuarioId: string) {
   const [statusFiltro, setStatusFiltro] = useState<StatusFilter>("todos");
 
   useEffect(() => {
-    salvarEstadoMapas(estadoMapas);
-  }, [estadoMapas]);
+    if (estadoMapas.abaAtivaId) {
+      salvarAbaAtiva(usuarioId, estadoMapas.abaAtivaId);
+    }
+  }, [estadoMapas.abaAtivaId, usuarioId]);
 
   useEffect(() => {
+    let ativo = true;
+    let cancelarObservacao: (() => void) | undefined;
     setSincronizando(true);
-    return observarMapas(
-      (mapasRemotos) => {
-        if (mapasRemotos.length === 0 && !migracaoIniciada.current) {
-          migracaoIniciada.current = true;
-          void migrarMapasLocais(estadoInicial.current.abas, usuarioId).catch(
-            registrarErro,
-          );
-          return;
-        }
+    setErroSincronizacao(null);
 
-        if (mapasRemotos.length > 0) {
-          setEstadoMapas((estadoAtual) => ({
-            version: 2,
-            abaAtivaId: mapasRemotos.some(
-              (mapa) => mapa.id === estadoAtual.abaAtivaId,
-            )
-              ? estadoAtual.abaAtivaId
-              : mapasRemotos[0].id,
-            abas: mapasRemotos,
-          }));
-        }
-        setErroSincronizacao(null);
-        setSincronizando(false);
-      },
-      registrarErro,
-    );
+    void migrarMapasLegados(usuarioId)
+      .then(() => {
+        if (!ativo) return;
+        cancelarObservacao = observarMapas(
+          usuarioId,
+          (mapasRemotos) => {
+            if (mapasRemotos.length === 0) {
+              if (!mapaInicialEmCriacao.current) {
+                mapaInicialEmCriacao.current = true;
+                const mapaInicial = {
+                  id: "mapa-principal",
+                  nome: "Mapa principal",
+                  userId: usuarioId,
+                  marcacoes: {},
+                  criadoEm: new Date().toISOString(),
+                };
+                void criarMapaRemoto(mapaInicial, usuarioId).catch((erro) => {
+                  mapaInicialEmCriacao.current = false;
+                  registrarErro(erro);
+                });
+              }
+              return;
+            }
+
+            mapaInicialEmCriacao.current = false;
+            setEstadoMapas((estadoAtual) => ({
+              version: 3,
+              abaAtivaId: mapasRemotos.some(
+                (mapa) => mapa.id === estadoAtual.abaAtivaId,
+              )
+                ? estadoAtual.abaAtivaId
+                : mapasRemotos[0].id,
+              abas: mapasRemotos,
+            }));
+            setErroSincronizacao(null);
+            setSincronizando(false);
+          },
+          registrarErro,
+        );
+      })
+      .catch(registrarErro);
+
+    return () => {
+      ativo = false;
+      cancelarObservacao?.();
+    };
   }, [usuarioId]);
 
   function registrarErro(erro: Error) {
@@ -108,7 +133,7 @@ export function usePlanta(usuarioId: string) {
   function selecionarUnidade(id: string) {
     setUnidadeSelecionadaId(id);
     const ferramenta = statusPincel;
-    if (ferramenta) {
+    if (ferramenta && abaAtual) {
       atualizarMarcacoesAtuais((atuais) => {
         const proximas = { ...atuais };
         if (ferramenta === "sem-marcacao") delete proximas[id];
@@ -125,6 +150,7 @@ export function usePlanta(usuarioId: string) {
   }
 
   function definirStatus(id: string, status: StatusId | null) {
+    if (!abaAtual) return;
     atualizarMarcacoesAtuais((atuais) => {
       const proximas = { ...atuais };
       if (status) proximas[id] = status;
@@ -150,6 +176,7 @@ export function usePlanta(usuarioId: string) {
   }
 
   function limparTudo() {
+    if (!abaAtual) return;
     atualizarMarcacoesAtuais(() => ({}));
     void substituirMarcacoesRemotas(abaAtual.id, {}, usuarioId).catch(
       registrarErro,
@@ -157,6 +184,7 @@ export function usePlanta(usuarioId: string) {
   }
 
   function substituirMarcacoes(novas: Marcacoes) {
+    if (!abaAtual) return;
     atualizarMarcacoesAtuais(() => novas);
     void substituirMarcacoesRemotas(abaAtual.id, novas, usuarioId).catch(
       registrarErro,
@@ -187,6 +215,7 @@ export function usePlanta(usuarioId: string) {
     const novaAba = {
       id,
       nome: nomeNormalizado,
+      userId: usuarioId,
       marcacoes: {},
       criadoEm: new Date().toISOString(),
     };
@@ -213,7 +242,7 @@ export function usePlanta(usuarioId: string) {
           : estadoAtual.abaAtivaId;
       return { ...estadoAtual, abas, abaAtivaId };
     });
-    void excluirMapaRemoto(id).catch(registrarErro);
+    void excluirMapaRemoto(id, usuarioId).catch(registrarErro);
     setUnidadeSelecionadaId(null);
   }
 

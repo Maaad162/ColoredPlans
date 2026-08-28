@@ -2,16 +2,31 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function autenticado() {
-      return request.auth != null;
+    function eProprioUsuario(userId) {
+      return request.auth != null && request.auth.uid == userId;
     }
 
-    match /obras/{obraId} {
-      allow read: if autenticado();
+    match /usuarios/{userId}/obras/{obraId}/mapas/{mapaId} {
+      allow read: if eProprioUsuario(userId)
+                  && resource.data.userId == userId;
 
-      match /mapas/{mapaId} {
-        allow read, create, update, delete: if autenticado();
-      }
+      allow create: if eProprioUsuario(userId)
+                    && request.resource.data.userId == userId;
+
+      allow update: if eProprioUsuario(userId)
+                    && resource.data.userId == userId
+                    && request.resource.data.userId == userId;
+
+      allow delete: if eProprioUsuario(userId)
+                    && resource.data.userId == userId;
+    }
+
+    // Caminho antigo: disponível somente ao criador para a migração automática.
+    // Novos mapas nunca são gravados aqui.
+    match /obras/{obraId}/mapas/{mapaId} {
+      allow read, delete: if request.auth != null
+                          && resource.data.criadoPor == request.auth.uid;
+      allow create, update: if false;
     }
   }
 }

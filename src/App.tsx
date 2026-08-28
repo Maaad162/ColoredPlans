@@ -40,6 +40,8 @@ function AplicacaoMapas({ usuario, onSair }: AplicacaoMapasProps) {
     return () => window.clearTimeout(timeout);
   }, [mensagem]);
 
+  if (!planta.abaAtual) return <AuthLoading />;
+
   async function importar(arquivo: File) {
     try {
       const texto = await arquivo.text();

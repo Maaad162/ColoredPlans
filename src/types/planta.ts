@@ -42,12 +42,13 @@ export type Marcacoes = Record<string, StatusId | null>;
 export interface MapaServico {
   id: string;
   nome: string;
+  userId: string;
   marcacoes: Marcacoes;
   criadoEm: string;
 }
 
 export interface EstadoMapas {
-  version: 2;
+  version: 3;
   abaAtivaId: string;
   abas: MapaServico[];
 }

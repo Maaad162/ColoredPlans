@@ -1,103 +1,29 @@
 import { STATUSES } from "../config/statuses";
 import type {
   ArquivoMarcacoes,
-  EstadoMapas,
   Marcacoes,
   StatusId,
   Unidade,
 } from "../types/planta";
 
-const LEGACY_STORAGE_KEY = "lm-colored-plans:marcacoes:v1";
-const MAPAS_STORAGE_KEY = "lm-colored-plans:mapas:v2";
+const ABA_ATIVA_STORAGE_PREFIX = "lm-colored-plans:aba-ativa:v3";
 
 const idsDeStatus = new Set(STATUSES.map((status) => status.id));
 
-function normalizarMarcacoes(valor: unknown): Marcacoes {
-  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return {};
-
-  return Object.fromEntries(
-    Object.entries(valor).filter(
-      ([, status]) => status === null || idsDeStatus.has(status as StatusId),
-    ),
-  ) as Marcacoes;
-}
-
-function carregarMarcacoesLegadas(): Marcacoes {
+export function carregarAbaAtiva(usuarioId: string): string | null {
   try {
-    const salvo = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (!salvo) return {};
-    return normalizarMarcacoes(JSON.parse(salvo));
+    return localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`);
   } catch {
-    return {};
+    return null;
   }
 }
 
-function criarEstadoInicial(): EstadoMapas {
-  return {
-    version: 2,
-    abaAtivaId: "mapa-principal",
-    abas: [
-      {
-        id: "mapa-principal",
-        nome: "Mapa principal",
-        marcacoes: carregarMarcacoesLegadas(),
-        criadoEm: new Date().toISOString(),
-      },
-    ],
-  };
-}
-
-export function carregarEstadoMapas(): EstadoMapas {
+export function salvarAbaAtiva(usuarioId: string, mapaId: string) {
   try {
-    const salvo = localStorage.getItem(MAPAS_STORAGE_KEY);
-    if (!salvo) return criarEstadoInicial();
-
-    const parsed: unknown = JSON.parse(salvo);
-    if (!parsed || typeof parsed !== "object") return criarEstadoInicial();
-
-    const candidato = parsed as Partial<EstadoMapas>;
-    if (candidato.version !== 2 || !Array.isArray(candidato.abas)) {
-      return criarEstadoInicial();
-    }
-
-    const ids = new Set<string>();
-    const abas = candidato.abas.flatMap((aba) => {
-      if (
-        !aba ||
-        typeof aba.id !== "string" ||
-        typeof aba.nome !== "string" ||
-        !aba.nome.trim() ||
-        ids.has(aba.id)
-      ) {
-        return [];
-      }
-      ids.add(aba.id);
-      return [
-        {
-          id: aba.id,
-          nome: aba.nome.trim().slice(0, 48),
-          marcacoes: normalizarMarcacoes(aba.marcacoes),
-          criadoEm:
-            typeof aba.criadoEm === "string"
-              ? aba.criadoEm
-              : new Date().toISOString(),
-        },
-      ];
-    });
-
-    if (abas.length === 0) return criarEstadoInicial();
-    const abaAtivaId = abas.some((aba) => aba.id === candidato.abaAtivaId)
-      ? candidato.abaAtivaId!
-      : abas[0].id;
-
-    return { version: 2, abaAtivaId, abas };
+    localStorage.setItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`, mapaId);
   } catch {
-    return criarEstadoInicial();
+    // A preferência local é opcional; os mapas continuam no Firestore.
   }
-}
-
-export function salvarEstadoMapas(estado: EstadoMapas) {
-  localStorage.setItem(MAPAS_STORAGE_KEY, JSON.stringify(estado));
 }
 
 export function criarArquivoExportacao(

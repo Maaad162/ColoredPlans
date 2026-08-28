@@ -23,6 +23,26 @@ npm run build
 npm run preview
 ```
 
+## Hospedagem no Firebase
+
+O arquivo `firebase.json` já está configurado para publicar a pasta `dist`,
+redirecionar as rotas da SPA para `index.html` e incluir as regras do Firestore.
+Depois de instalar e preencher o `.env.local`, execute na raiz do projeto:
+
+```bash
+firebase login
+firebase use --add
+npm run build
+firebase deploy --only hosting,firestore:rules
+```
+
+Durante `firebase use --add`, selecione o mesmo projeto usado em
+`VITE_FIREBASE_PROJECT_ID`. O endereço publicado será exibido ao final do
+deploy, normalmente no formato `https://<project-id>.web.app`.
+
+Após o primeiro deploy, adicione o domínio `*.web.app` usado pela aplicação em
+`Authentication > Configurações > Domínios autorizados` no Console do Firebase.
+
 ## Estrutura de dados
 
 - `src/data/planta.ts`: blocos, unidades e coordenadas SVG.

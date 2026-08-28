@@ -4,10 +4,13 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDocs,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -18,10 +21,21 @@ import type { MapaServico, Marcacoes, StatusId } from "../types/planta";
 export const OBRA_ID = "obra-principal";
 
 const statusValidos = new Set(STATUSES.map((status) => status.id));
-const mapasCollection = collection(db, "obras", OBRA_ID, "mapas");
+const mapasLegadosCollection = collection(db, "obras", OBRA_ID, "mapas");
 
-function mapaDocument(id: string) {
-  return doc(db, "obras", OBRA_ID, "mapas", id);
+function mapasCollection(usuarioId: string) {
+  return collection(
+    db,
+    "usuarios",
+    usuarioId,
+    "obras",
+    OBRA_ID,
+    "mapas",
+  );
+}
+
+function mapaDocument(usuarioId: string, id: string) {
+  return doc(mapasCollection(usuarioId), id);
 }
 
 function normalizarMarcacoes(valor: unknown): Marcacoes {
@@ -34,11 +48,12 @@ function normalizarMarcacoes(valor: unknown): Marcacoes {
 }
 
 export function observarMapas(
+  usuarioId: string,
   aoAtualizar: (mapas: MapaServico[]) => void,
   aoFalhar: (erro: Error) => void,
 ): Unsubscribe {
   return onSnapshot(
-    mapasCollection,
+    query(mapasCollection(usuarioId), where("userId", "==", usuarioId)),
     (snapshot) => {
       const mapas = snapshot.docs
         .map((documento) => {
@@ -49,6 +64,7 @@ export function observarMapas(
               : new Date().toISOString();
           return {
             id: documento.id,
+            userId: usuarioId,
             nome:
               typeof data.nome === "string" && data.nome.trim()
                 ? data.nome.trim().slice(0, 48)
@@ -64,29 +80,45 @@ export function observarMapas(
   );
 }
 
-export async function migrarMapasLocais(
-  mapas: MapaServico[],
-  usuarioId: string,
-) {
-  const batch = writeBatch(db);
-  for (const mapa of mapas) {
-    const dataCriacao = new Date(mapa.criadoEm);
-    batch.set(mapaDocument(mapa.id), {
-      nome: mapa.nome,
-      marcacoes: mapa.marcacoes,
-      criadoEm: Timestamp.fromDate(
-        Number.isNaN(dataCriacao.getTime()) ? new Date() : dataCriacao,
-      ),
-      atualizadoEm: serverTimestamp(),
-      criadoPor: usuarioId,
-      atualizadoPor: usuarioId,
-    });
+export async function migrarMapasLegados(usuarioId: string) {
+  const consulta = query(
+    mapasLegadosCollection,
+    where("criadoPor", "==", usuarioId),
+  );
+  const snapshot = await getDocs(consulta);
+
+  for (let inicio = 0; inicio < snapshot.docs.length; inicio += 400) {
+    const batch = writeBatch(db);
+    for (const documento of snapshot.docs.slice(inicio, inicio + 400)) {
+      const data = documento.data();
+      batch.set(mapaDocument(usuarioId, documento.id), {
+        userId: usuarioId,
+        nome:
+          typeof data.nome === "string" && data.nome.trim()
+            ? data.nome.trim().slice(0, 48)
+            : "Mapa sem nome",
+        marcacoes: normalizarMarcacoes(data.marcacoes),
+        criadoEm:
+          data.criadoEm instanceof Timestamp
+            ? data.criadoEm
+            : serverTimestamp(),
+        atualizadoEm: serverTimestamp(),
+        criadoPor: usuarioId,
+        atualizadoPor: usuarioId,
+      });
+      batch.delete(documento.ref);
+    }
+    await batch.commit();
   }
-  await batch.commit();
 }
 
 export function criarMapaRemoto(mapa: MapaServico, usuarioId: string) {
-  return setDoc(mapaDocument(mapa.id), {
+  if (mapa.userId !== usuarioId) {
+    return Promise.reject(new Error("O proprietário do mapa é inválido."));
+  }
+
+  return setDoc(mapaDocument(usuarioId, mapa.id), {
+    userId: usuarioId,
     nome: mapa.nome,
     marcacoes: {},
     criadoEm: serverTimestamp(),
@@ -96,8 +128,8 @@ export function criarMapaRemoto(mapa: MapaServico, usuarioId: string) {
   });
 }
 
-export function excluirMapaRemoto(id: string) {
-  return deleteDoc(mapaDocument(id));
+export function excluirMapaRemoto(id: string, usuarioId: string) {
+  return deleteDoc(mapaDocument(usuarioId, id));
 }
 
 export function atualizarStatusRemoto(
@@ -106,7 +138,7 @@ export function atualizarStatusRemoto(
   status: StatusId | null,
   usuarioId: string,
 ) {
-  return updateDoc(mapaDocument(mapaId), {
+  return updateDoc(mapaDocument(usuarioId, mapaId), {
     [`marcacoes.${unidadeId}`]: status ?? deleteField(),
     atualizadoEm: serverTimestamp(),
     atualizadoPor: usuarioId,
@@ -118,7 +150,7 @@ export function substituirMarcacoesRemotas(
   marcacoes: Marcacoes,
   usuarioId: string,
 ) {
-  return updateDoc(mapaDocument(mapaId), {
+  return updateDoc(mapaDocument(usuarioId, mapaId), {
     marcacoes,
     atualizadoEm: serverTimestamp(),
     atualizadoPor: usuarioId,
