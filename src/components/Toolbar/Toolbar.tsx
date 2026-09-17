@@ -21,6 +21,7 @@ interface ToolbarProps {
   onStatusPincel: (status: FerramentaPintura | null) => void;
   onZoom: (zoom: number) => void;
   onExportar: () => void;
+  onExportarCsv: () => void;
   onImportar: (arquivo: File) => void;
   onLimparTudo: () => void;
 }
@@ -38,6 +39,7 @@ export function Toolbar({
   onStatusPincel,
   onZoom,
   onExportar,
+  onExportarCsv,
   onImportar,
   onLimparTudo,
 }: ToolbarProps) {
@@ -129,9 +131,13 @@ export function Toolbar({
         </div>
 
         <div className="action-menu">
-          <button className="button button--secondary" type="button" onClick={onExportar}>
+          <button className="button button--secondary" type="button" onClick={onExportar} title="Exportar mapa ativo em JSON">
             <Icon name="download" />
-            <span>Exportar</span>
+            <span>JSON</span>
+          </button>
+          <button className="button button--secondary" type="button" onClick={onExportarCsv} title="Exportar todos os mapas em CSV">
+            <Icon name="download" />
+            <span>CSV de todos os mapas</span>
           </button>
           <button
             className="button button--secondary"

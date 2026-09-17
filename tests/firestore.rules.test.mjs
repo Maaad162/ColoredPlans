@@ -16,12 +16,15 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
+import { CURRENT_SCHEMA_VERSION, OBRA_PADRAO_ID } from "../src/config/dados.ts";
+
+const escopo = { schemaVersion: CURRENT_SCHEMA_VERSION, obraId: OBRA_PADRAO_ID };
 const projeto = "lmcoloredplans";
 const usuario1 = "usuario-1";
 const usuario2 = "usuario-2";
 const usuario3 = "usuario-3";
 const caminhoMapas = (uid) =>
-  `usuarios/${uid}/obras/obra-principal/mapas`;
+  `usuarios/${uid}/obras/${OBRA_PADRAO_ID}/mapas`;
 const caminhoKits = (uid) => `usuarios/${uid}/kits`;
 
 const material = {
@@ -53,27 +56,27 @@ try {
     const banco = contexto.firestore();
     await Promise.all([
       setDoc(doc(banco, `usuarios/${usuario1}`), {
-        userId: usuario1,
+        ...escopo, userId: usuario1,
         email: "estoque@teste.com",
         tipoConta: "estoque",
       }),
       setDoc(doc(banco, `usuarios/${usuario2}`), {
-        userId: usuario2,
+        ...escopo, userId: usuario2,
         email: "apontamento@teste.com",
         tipoConta: "apontamento",
       }),
       setDoc(doc(banco, `usuarios/${usuario3}`), {
-        userId: usuario3,
+        ...escopo, userId: usuario3,
         email: "outro-estoque@teste.com",
         tipoConta: "estoque",
       }),
       setDoc(doc(banco, caminhoMapas(usuario1), "pintura"), {
-        userId: usuario1,
+        ...escopo, userId: usuario1,
         nome: "Pintura",
         marcacoes: { "bloco-01-001": "concluido" },
       }),
       setDoc(doc(banco, caminhoMapas(usuario2), "pintura"), {
-        userId: usuario2,
+        ...escopo, userId: usuario2,
         nome: "Pintura",
         marcacoes: { "bloco-01-001": "pendente" },
       }),
@@ -83,19 +86,19 @@ try {
         marcacoes: {},
       }),
       setDoc(doc(banco, `usuarios/${usuario1}/legendas/concluido`), {
-        userId: usuario1,
+        ...escopo, userId: usuario1,
         nome: "Concluído",
         cor: "#23875d",
       }),
       // Documentos antigos: Kit sem mapaId e mapa manual de mesmo nome.
       setDoc(doc(banco, caminhoKits(usuario1), "hidraulico"), {
-        userId: usuario1,
-        nome: "Kit Hidráulico",
+        ...escopo, userId: usuario1,
+        schemaVersion: 0, nome: "Kit Hidráulico",
         materiais: [material],
         unidadeIds: unidadesIniciais,
       }),
       setDoc(doc(banco, caminhoMapas(usuario1), "hidraulico-antigo"), {
-        userId: usuario1,
+        ...escopo, userId: usuario1,
         nome: "Kit Hidráulico",
         marcacoes: { "bloco-01-001": "andamento" },
       }),
@@ -113,6 +116,13 @@ try {
   const mapa2 = doc(banco2, caminhoMapas(usuario2), "pintura");
 
   await assertSucceeds(getDoc(mapa1));
+  await assertSucceeds(updateDoc(mapa1, { nome: "Pintura renomeada" }));
+  const renomeado = await getDoc(mapa1);
+  if (renomeado.data().nome !== "Pintura renomeada"
+    || renomeado.data().marcacoes["bloco-01-001"] !== "concluido") {
+    throw new Error("Renomear o mapa manual deve preservar suas marcações.");
+  }
+  await assertFails(updateDoc(mapa1, { nome: "" }));
   await assertSucceeds(getDoc(mapa2));
   await assertFails(getDoc(mapa1ComoUsuario2));
   await assertSucceeds(updateDoc(mapa1, {
@@ -133,14 +143,14 @@ try {
   )));
 
   await assertSucceeds(setDoc(doc(banco2, caminhoMapas(usuario2), "eletrica"), {
-    userId: usuario2,
+    ...escopo, userId: usuario2,
     tipo: "manual",
     kitUnidadeIds: [],
     nome: "Elétrica",
     marcacoes: {},
   }));
   await assertFails(setDoc(doc(banco2, caminhoMapas(usuario1), "invasao"), {
-    userId: usuario2,
+    ...escopo, userId: usuario2,
     tipo: "manual",
     kitUnidadeIds: [],
     nome: "Mapa indevido",
@@ -152,7 +162,7 @@ try {
   await assertSucceeds(getDoc(perfil1));
   await assertFails(getDoc(doc(banco2, `usuarios/${usuario1}`)));
   await assertFails(updateDoc(perfil1, { tipoConta: "apontamento" }));
-  await assertSucceeds(setDoc(doc(banco4, "usuarios/usuario-4"), {
+  await assertFails(setDoc(doc(banco4, "usuarios/usuario-4"), {
     userId: "usuario-4",
     email: "novo@teste.com",
     tipoConta: "apontamento",
@@ -165,7 +175,7 @@ try {
 
   await assertSucceeds(setDoc(
     doc(banco2, `usuarios/${usuario2}/legendas/aguardando`),
-    { userId: usuario2, nome: "Aguardando correção", cor: "#8059b6" },
+    { ...escopo, userId: usuario2, nome: "Aguardando correção", cor: "#8059b6" },
   ));
   await assertSucceeds(updateDoc(mapa2, {
     "marcacoes.bloco-01-002": "aguardando",
@@ -179,8 +189,9 @@ try {
     "hidraulico-antigo",
   );
   const loteMigracao = writeBatch(banco1);
-  loteMigracao.update(kitLegado, { mapaId: "hidraulico-antigo" });
+  loteMigracao.update(kitLegado, { ...escopo, mapaId: "hidraulico-antigo" });
   loteMigracao.update(mapaLegadoKit, {
+    ...escopo,
     tipo: "kit",
     kitId: "hidraulico",
     kitUnidadeIds: unidadesIniciais,
@@ -192,6 +203,7 @@ try {
   }
 
   // Não é possível alterar apenas um lado do vínculo.
+  await assertFails(updateDoc(mapaLegadoKit, { nome: "Renomeado diretamente" }));
   await assertFails(updateDoc(kitLegado, { nome: "Hidráulico renomeado" }));
   await assertFails(updateDoc(kitLegado, {
     unidadeIds: [...unidadesIniciais, "bloco-02-001"],
@@ -219,14 +231,14 @@ try {
   );
   const loteCriacao = writeBatch(banco1);
   loteCriacao.set(kitIsometrico, {
-    userId: usuario1,
+    ...escopo, userId: usuario1,
     mapaId: "mapa-kit-isometrico",
     nome: "Isométrico",
     materiais: [material],
     unidadeIds: [],
   });
   loteCriacao.set(mapaIsometrico, {
-    userId: usuario1,
+    ...escopo, userId: usuario1,
     nome: "Isométrico",
     tipo: "kit",
     kitId: "isometrico",
@@ -238,7 +250,7 @@ try {
 
   // Kit sem mapa e mapa apontando para Kit inexistente são rejeitados.
   await assertFails(setDoc(doc(banco1, caminhoKits(usuario1), "sem-mapa"), {
-    userId: usuario1,
+    ...escopo, userId: usuario1,
     mapaId: "mapa-inexistente",
     nome: "Sem mapa",
     materiais: [material],
@@ -247,7 +259,7 @@ try {
   await assertFails(setDoc(
     doc(banco1, caminhoMapas(usuario1), "mapa-sem-kit"),
     {
-      userId: usuario1,
+      ...escopo, userId: usuario1,
       nome: "Mapa sem Kit",
       tipo: "kit",
       kitId: "kit-inexistente",
@@ -256,7 +268,7 @@ try {
     },
   ));
   await assertFails(setDoc(doc(banco2, caminhoKits(usuario2), "negado"), {
-    userId: usuario2,
+    ...escopo, userId: usuario2,
     mapaId: "qualquer",
     nome: "Kit não permitido",
     materiais: [material],
@@ -268,14 +280,14 @@ try {
   const mapa3 = doc(banco3, caminhoMapas(usuario3), "mapa-kit-proprio");
   const lote3 = writeBatch(banco3);
   lote3.set(kit3, {
-    userId: usuario3,
+    ...escopo, userId: usuario3,
     mapaId: "mapa-kit-proprio",
     nome: "Kit próprio",
     materiais: [material],
     unidadeIds: [],
   });
   lote3.set(mapa3, {
-    userId: usuario3,
+    ...escopo, userId: usuario3,
     nome: "Kit próprio",
     tipo: "kit",
     kitId: "proprio",
@@ -300,7 +312,7 @@ try {
   const legadoGlobal2 = doc(banco2, "obras/obra-principal/mapas/legado");
   await assertSucceeds(getDoc(legadoGlobal1));
   await assertFails(getDoc(legadoGlobal2));
-  await assertSucceeds(deleteDoc(legadoGlobal1));
+  await assertFails(deleteDoc(legadoGlobal1));
 
   const [pintura1, pintura2] = await Promise.all([
     getDoc(mapa1),
@@ -324,6 +336,55 @@ try {
   ) {
     throw new Error("Kit e mapa terminaram inconsistentes.");
   }
+
+
+  // Nenhum cliente provisiona, promove, substitui ou apaga perfis.
+  for (const [banco, uid] of [[banco1, usuario1], [banco2, usuario2]]) {
+    const perfil = doc(banco, `usuarios/${uid}`);
+    await assertFails(updateDoc(perfil, { tipoConta: uid === usuario1 ? "admin" : "estoque" }));
+    await assertFails(updateDoc(perfil, { email: "alterado@teste.com" }));
+    await assertFails(setDoc(perfil, { ...escopo, userId: uid, tipoConta: "estoque" }));
+    await assertFails(deleteDoc(perfil));
+  }
+  await assertFails(setDoc(doc(banco4, "usuarios/usuario-4"), { ...escopo, userId: "usuario-4", tipoConta: "estoque" }));
+  await assertFails(setDoc(doc(banco4, caminhoMapas("usuario-4"), "sem-perfil"), {
+    ...escopo, userId: "usuario-4", nome: "Invasão", marcacoes: {},
+  }));
+  await assertFails(setDoc(doc(banco4, "usuarios/usuario-4/legendas/a"), {
+    ...escopo, userId: "usuario-4", nome: "Invasão", cor: "#ffffff",
+  }));
+  await assertFails(getDoc(doc(banco2, caminhoKits(usuario2), "negado")));
+  await assertFails(getDoc(doc(ambiente.unauthenticatedContext().firestore(), caminhoMapas(usuario1), "pintura")));
+
+  // Mesmo ID de mapa em obras distintas não compartilha marcações nem vínculos.
+  const obraB = "obra-b";
+  const mapaB = doc(banco1, `usuarios/${usuario1}/obras/${obraB}/mapas/pintura`);
+  await assertSucceeds(setDoc(mapaB, { ...escopo, obraId: obraB, userId: usuario1, nome: "Obra B", marcacoes: {} }));
+  await assertSucceeds(updateDoc(mapaB, { "marcacoes.bloco-01-001": "obra-b-status" }));
+  if ((await getDoc(mapa1)).data().marcacoes["bloco-01-001"] !== "concluido") throw new Error("Vazamento entre obras.");
+  await assertFails(updateDoc(mapaB, { obraId: OBRA_PADRAO_ID }));
+  await assertFails(getDoc(doc(banco2, mapaB.path)));
+  await assertFails(setDoc(doc(banco1, `usuarios/${usuario1}/obras/${obraB}/mapas/falso-kit`), {
+    ...escopo, obraId: obraB, userId: usuario1, nome: "Hidráulico renomeado",
+    tipo: "kit", kitId: "hidraulico", kitUnidadeIds: unidadesAtualizadas, marcacoes: {},
+  }));
+  await assertFails(updateDoc(kitLegado, { obraId: obraB }));
+
+  const kitB = doc(banco1, caminhoKits(usuario1), "kit-b");
+  const mapaKitB = doc(banco1, `usuarios/${usuario1}/obras/${obraB}/mapas/mapa-kit-b`);
+  const loteB = writeBatch(banco1);
+  loteB.set(kitB, { ...escopo, obraId: obraB, userId: usuario1, nome: "Kit B", mapaId: "mapa-kit-b", materiais: [material], unidadeIds: [] });
+  loteB.set(mapaKitB, { ...escopo, obraId: obraB, userId: usuario1, nome: "Kit B", tipo: "kit", kitId: "kit-b", kitUnidadeIds: [], marcacoes: {} });
+  await assertSucceeds(loteB.commit());
+  await assertFails(deleteDoc(mapaKitB));
+  await assertFails(updateDoc(mapaB, { schemaVersion: 0 }));
+  await assertFails(updateDoc(mapaB, { schemaVersion: 999 }));
+  await ambiente.withSecurityRulesDisabled(async (contexto) => {
+    await setDoc(doc(contexto.firestore(), caminhoMapas(usuario1), "futuro"), {
+      ...escopo, schemaVersion: 999, userId: usuario1, nome: "Futuro", marcacoes: {},
+    });
+  });
+  await assertFails(updateDoc(doc(banco1, caminhoMapas(usuario1), "futuro"), { schemaVersion: CURRENT_SCHEMA_VERSION }));
 
   console.log(
     "OK: vínculo Kit/mapa, migração, atomicidade, exclusão e isolamento confirmados.",

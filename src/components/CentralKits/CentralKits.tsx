@@ -6,6 +6,7 @@ import type { Kit, MaterialKit } from "../../types/planta";
 
 interface CentralKitsProps {
   usuarioId: string;
+  obraId: string;
   onMensagem: (mensagem: string) => void;
   onAbrirMapa: (mapaId: string) => void;
 }
@@ -28,8 +29,8 @@ function formatarQuantidade(valor: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
 }
 
-export function CentralKits({ usuarioId, onMensagem, onAbrirMapa }: CentralKitsProps) {
-  const kitsState = useKits(usuarioId, true);
+export function CentralKits({ usuarioId, obraId, onMensagem, onAbrirMapa }: CentralKitsProps) {
+  const kitsState = useKits(usuarioId, obraId, true);
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Kit | "novo" | null>(null);
   const [vinculando, setVinculando] = useState<Kit | null>(null);

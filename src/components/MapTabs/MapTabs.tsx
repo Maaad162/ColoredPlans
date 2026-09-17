@@ -7,6 +7,7 @@ interface MapTabsProps {
   abaAtivaId: string;
   onSelecionar: (id: string) => void;
   onCriar: (nome: string) => boolean;
+  onRenomear: (id: string, nome: string) => boolean;
   onExcluir: (id: string, nome: string) => void;
 }
 
@@ -15,9 +16,11 @@ export function MapTabs({
   abaAtivaId,
   onSelecionar,
   onCriar,
+  onRenomear,
   onExcluir,
 }: MapTabsProps) {
   const [modalAberto, setModalAberto] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +38,7 @@ export function MapTabs({
 
   function fecharModal() {
     setModalAberto(false);
+    setEditandoId(null);
     setNome("");
     setErro(null);
   }
@@ -45,8 +49,8 @@ export function MapTabs({
       setErro("Digite um nome para a nova aba.");
       return;
     }
-    if (!onCriar(nome)) {
-      setErro("Já existe uma aba com esse nome.");
+    if (!(editandoId ? onRenomear(editandoId, nome) : onCriar(nome))) {
+      setErro("Nome duplicado ou mapa indisponível para edição.");
       return;
     }
     fecharModal();
@@ -101,6 +105,17 @@ export function MapTabs({
                     {totalMarcado}
                   </small>
                 </button>
+                {aba.tipo === "manual" && (
+                  <button type="button" className="map-tab__rename"
+                    title={`Renomear ${aba.nome}`} aria-label={`Renomear ${aba.nome}`}
+                    onClick={() => {
+                      setEditandoId(aba.id);
+                      setNome(aba.nome);
+                      setModalAberto(true);
+                    }}>
+                    <Icon name="paint" size={14} />
+                  </button>
+                )}
                 {abas.length > 1 && aba.tipo !== "kit" && (
                   <button
                     type="button"
@@ -139,11 +154,11 @@ export function MapTabs({
               <Icon name="plus" size={20} />
             </div>
             <div className="modal-card__titulo">
-              <p className="eyebrow">Novo mapa</p>
-              <h2 id="nova-aba-titulo">Criar aba de serviço</h2>
-              <p>
+              <p className="eyebrow">{editandoId ? "Mapa manual" : "Novo mapa"}</p>
+              <h2 id="nova-aba-titulo">{editandoId ? "Renomear mapa" : "Criar aba de serviço"}</h2>
+              {!editandoId && <p>
                 A nova aba usará a mesma planta e começará sem marcações.
-              </p>
+              </p>}
             </div>
             <form onSubmit={handleSubmit}>
               <label htmlFor="nome-nova-aba">Nome do serviço</label>
@@ -166,7 +181,7 @@ export function MapTabs({
                   Cancelar
                 </button>
                 <button type="submit" className="button button--primary">
-                  Criar aba
+                  {editandoId ? "Renomear" : "Criar aba"}
                 </button>
               </div>
             </form>
