@@ -19,7 +19,7 @@ import {
 import { CURRENT_SCHEMA_VERSION, OBRA_LEGADA_ID } from "../src/config/dados.ts";
 
 const escopo = { schemaVersion: CURRENT_SCHEMA_VERSION, obraId: OBRA_LEGADA_ID };
-const projeto = "lmcoloredplans";
+const projeto = "demo-coloredplans";
 const usuario1 = "usuario-1";
 const usuario2 = "usuario-2";
 const usuario3 = "usuario-3";

@@ -4,7 +4,7 @@ import { Bytes, doc, GeoPoint, getDoc, getDocFromServer, runTransaction, setDoc,
 import { conferirDocumentoDaMigracao, migrarObra } from "../src/services/migracoes.ts";
 import { CURRENT_SCHEMA_VERSION, OBRA_LEGADA_ID } from "../src/config/dados.ts";
 
-const ambiente = await initializeTestEnvironment({ projectId: "lmcoloredplans" });
+const ambiente = await initializeTestEnvironment({ projectId: "demo-coloredplans" });
 const obraLegada = { id: OBRA_LEGADA_ID, nome: "Obra original" };
 const obraB = { id: "obra-b", nome: "Obra B" };
 const uid = "migracao";

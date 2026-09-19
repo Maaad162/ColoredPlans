@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useControleSync } from "./useSincronizacao";
+import { ErroOperacional } from "../services/erros";
 import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../data/planta";
 import {
   atualizarStatusRemoto,
@@ -29,17 +31,15 @@ export function usePlanta(
   legendas: StatusConfig[],
   habilitarKits = false,
 ) {
+  const controle = useControleSync();
+  const [tentativa, setTentativa] = useState(0);
+  const mapasAtuais = useRef<EstadoMapas["abas"]>([]);
   const [estadoMapas, setEstadoMapas] = useState<EstadoMapas>(() => ({
     abaAtivaId: carregarAbaAtiva(usuarioId, obra.id) ?? "",
     abas: [],
   }));
   const mapaInicialEmCriacao = useRef(false);
-  const [sincronizando, setSincronizando] = useState(true);
   const [online, setOnline] = useState(navigator.onLine);
-  const [doCache, setDoCache] = useState(true);
-  const [pendente, setPendente] = useState(false);
-  const [gravacoes, setGravacoes] = useState(0);
-  const [erroSincronizacao, setErroSincronizacao] = useState<string | null>(null);
   const [unidadeSelecionadaId, setUnidadeSelecionadaId] = useState<string | null>(
     null,
   );
@@ -58,12 +58,12 @@ export function usePlanta(
     };
   }, []);
 
-  function gravar(operacao: () => Promise<void>) {
-    setGravacoes((total) => total + 1);
-    void Promise.resolve().then(operacao).catch(registrarErro).finally(() => {
-      setGravacoes((total) => total - 1);
-    });
-  }
+  const gravar = useCallback((operacao: () => Promise<void>, rotulo = "Alteração no mapa") => {
+    controle.enfileirar(`mapas:${crypto.randomUUID()}`, operacao, rotulo);
+  }, [controle]);
+  const registrarErro = useCallback((erro: unknown) => {
+    controle.falharLeitura("mapas", erro, () => setTentativa(v => v + 1));
+  }, [controle]);
 
   useEffect(() => {
     if (
@@ -91,8 +91,7 @@ export function usePlanta(
   useEffect(() => {
     let ativo = true;
     let cancelarObservacao: (() => void) | undefined;
-    setSincronizando(true);
-    setErroSincronizacao(null);
+    controle.observar("mapas", { fromCache: true, hasPendingWrites: false });
 
     function iniciarObservacao(criarInicial: boolean) {
       if (!ativo) return;
@@ -102,9 +101,10 @@ export function usePlanta(
         obra.id,
         (mapasRemotos, metadata) => {
           if (!ativo) return;
-          setDoCache(metadata.fromCache);
-          setPendente(metadata.hasPendingWrites);
+          controle.observar("mapas", metadata);
+          mapasAtuais.current = mapasRemotos;
           if (mapasRemotos.length === 0) {
+            setEstadoMapas({ abaAtivaId: "", abas: [] });
             if (!criarInicial || metadata.fromCache || metadata.hasPendingWrites) return;
             if (!mapaInicialEmCriacao.current) {
               mapaInicialEmCriacao.current = true;
@@ -125,7 +125,6 @@ export function usePlanta(
               : mapasRemotos[0].id,
             abas: mapasRemotos,
           }));
-          setSincronizando(false);
         },
         registrarErro,
       );
@@ -133,30 +132,27 @@ export function usePlanta(
 
     // O cache permanece acessível mesmo se uma migração aguardar a conexão.
     iniciarObservacao(false);
-    if (online) void migrarObra(db, usuarioId, obra, habilitarKits)
-      .then(() => iniciarObservacao(true))
-      .catch((erro: Error & { code?: string }) => {
-        if (ativo && erro.code !== "unavailable") registrarErro(erro);
-      });
+    if (online) {
+      controle.observar("preparacao", { fromCache: true, hasPendingWrites: false });
+      void migrarObra(db, usuarioId, obra, habilitarKits)
+        .then(() => { if (ativo) { controle.remover("preparacao"); iniciarObservacao(true); } })
+        .catch((erro: unknown) => {
+          if (ativo) controle.falharLeitura("preparacao", erro, () => setTentativa(v => v + 1));
+        });
+    }
 
     return () => {
       ativo = false;
       cancelarObservacao?.();
+      controle.remover("mapas"); controle.remover("preparacao");
     };
-  }, [habilitarKits, usuarioId, obra.id, obra.nome, online]);
+  }, [habilitarKits, usuarioId, obra, online, gravar, registrarErro, controle, tentativa]);
 
-  function registrarErro(erro: Error) {
-    console.error("Falha ao sincronizar com o Firestore:", erro);
-    setErroSincronizacao(
-      `Não foi possível salvar ou sincronizar os mapas: ${erro.message}. Confira as alterações e tente novamente.`,
-    );
-    setSincronizando(false);
-  }
 
   const abaAtual =
     estadoMapas.abas.find((aba) => aba.id === estadoMapas.abaAtivaId) ??
     estadoMapas.abas[0];
-  const marcacoes = abaAtual?.marcacoes ?? {};
+  const marcacoes = useMemo(() => abaAtual?.marcacoes ?? {}, [abaAtual?.marcacoes]);
 
   const unidadeSelecionada = unidadeSelecionadaId
     ? UNIDADE_BY_ID[unidadeSelecionadaId]
@@ -184,33 +180,38 @@ export function usePlanta(
     return resultado;
   }, [estadoMapas.abas]);
 
+  function obterMapa(id: string) {
+    const mapa = mapasAtuais.current.find(m => m.id === id);
+    if (!mapa) throw new ErroOperacional("ausente", "Este mapa não existe mais. Selecione outro mapa.");
+    return mapa;
+  }
   function selecionarUnidade(id: string) {
     setUnidadeSelecionadaId(id);
     const ferramenta = statusPincel;
     if (ferramenta && abaAtual) {
       gravar(() => atualizarStatusRemoto(
-        abaAtual.id,
+        obterMapa(abaAtual.id),
         id,
         ferramenta === "sem-marcacao" ? null : ferramenta,
         usuarioId,
         obra.id,
-      ));
+      ), `Unidade ${id} · ${abaAtual.nome}`);
     }
   }
 
   function definirStatus(id: string, status: StatusId | null) {
-    if (!abaAtual) return;
-    gravar(() => atualizarStatusRemoto(abaAtual.id, id, status, usuarioId, obra.id));
+    if (!abaAtual || !UNIDADE_BY_ID[id] || (status && !legendas.some(l => l.id === status))) return;
+    gravar(() => atualizarStatusRemoto(obterMapa(abaAtual.id), id, status, usuarioId, obra.id), `Unidade ${id} · ${abaAtual.nome}`);
   }
 
   function limparTudo() {
     if (!abaAtual) return;
-    gravar(() => substituirMarcacoesRemotas(abaAtual.id, {}, usuarioId, obra.id));
+    gravar(() => substituirMarcacoesRemotas(obterMapa(abaAtual.id), {}, usuarioId, obra.id), `Limpeza · ${abaAtual.nome}`);
   }
 
   function substituirMarcacoes(novas: Marcacoes) {
     if (!abaAtual) return;
-    gravar(() => substituirMarcacoesRemotas(abaAtual.id, novas, usuarioId, obra.id));
+    gravar(() => substituirMarcacoesRemotas(obterMapa(abaAtual.id), novas, usuarioId, obra.id), `Importação · ${abaAtual.nome}`);
     setUnidadeSelecionadaId(null);
   }
 
@@ -257,7 +258,7 @@ export function usePlanta(
   function excluirAba(id: string) {
     const mapa = estadoMapas.abas.find((aba) => aba.id === id);
     if (!mapa || mapa.tipo === "kit" || estadoMapas.abas.length <= 1) return false;
-    gravar(() => excluirMapaRemoto(id, usuarioId, obra.id));
+    gravar(() => excluirMapaRemoto(obterMapa(id), usuarioId, obra.id));
     setUnidadeSelecionadaId(null);
     return true;
   }
@@ -268,7 +269,7 @@ export function usePlanta(
     if (!mapa || mapa.tipo === "kit" || !normalizado) return false;
     if (estadoMapas.abas.some((aba) => aba.id !== id
       && aba.nome.toLocaleLowerCase("pt-BR") === normalizado.toLocaleLowerCase("pt-BR"))) return false;
-    gravar(() => renomearMapaRemoto(id, normalizado, usuarioId, obra.id));
+    gravar(() => renomearMapaRemoto(obterMapa(id), normalizado, usuarioId, obra.id));
     return true;
   }
 
@@ -305,11 +306,6 @@ export function usePlanta(
     statusFiltro,
     contagens,
     usoPorLegenda,
-    sincronizando,
-    erroSincronizacao,
-    estadoSalvamento: erroSincronizacao ? "Erro ao salvar/sincronizar"
-      : !online || doCache ? "Sem conexão/pendente de sincronização"
-      : sincronizando || pendente || gravacoes > 0 ? "Salvando" : "Salvo",
     localizarUnidade,
     renomearAba,
     selecionarUnidade,

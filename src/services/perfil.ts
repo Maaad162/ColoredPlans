@@ -6,6 +6,7 @@ import {
 import { lerSchemaVersion } from "../config/dados";
 import { tipoContaValido, type PerfilUsuario } from "../types/planta";
 import { perfilDocument } from "./caminhos";
+import { ErroOperacional } from "./erros";
 
 export function observarPerfil(
   usuarioId: string,
@@ -21,7 +22,7 @@ export function observarPerfil(
       }
       const data = snapshot.data();
       if (data.userId !== usuarioId || !tipoContaValido(data.tipoConta)) {
-        aoFalhar(new Error("O perfil possui um tipo de conta inválido."));
+        aoFalhar(new ErroOperacional("validacao", "O perfil possui dados inválidos. Solicite revisão ao responsável pela conta."));
         return;
       }
       try {

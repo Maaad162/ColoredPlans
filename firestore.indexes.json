@@ -1,0 +1,17 @@
+{
+  "indexes": [
+    { "collectionGroup": "historico", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "obraId", "order": "ASCENDING" }, { "fieldPath": "criadoEm", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "historico", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "obraId", "order": "ASCENDING" },
+      { "fieldPath": "mapaId", "order": "ASCENDING" }, { "fieldPath": "criadoEm", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "historico", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "userId", "order": "ASCENDING" }, { "fieldPath": "obraId", "order": "ASCENDING" },
+      { "fieldPath": "mapaId", "order": "ASCENDING" }, { "fieldPath": "unidadeIds", "arrayConfig": "CONTAINS" },
+      { "fieldPath": "criadoEm", "order": "DESCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}

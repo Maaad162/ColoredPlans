@@ -140,6 +140,73 @@ service cloud.firestore {
                     && !existsAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraDoKit(resource.data))/mapas/$(resource.data.mapaId));
     }
 
+    function eventoEstruturado(data, userId, obraId) {
+      return data.keys().hasOnly(['schemaVersion', 'userId', 'obraId', 'mapaId', 'mapaNome', 'acao',
+                                  'unidadeIds', 'antes', 'depois', 'nomeAnterior', 'nomeAtual', 'criadoEm'])
+        && schemaAtual(data) && data.userId == userId && data.obraId == obraId
+        && data.criadoEm == request.time
+        && data.mapaId is string && data.mapaId.matches('^[^/]+$')
+        && data.mapaNome is string && data.mapaNome.size() <= 80
+        && data.unidadeIds is list && data.unidadeIds.size() <= 100
+        && data.unidadeIds.toSet().size() == data.unidadeIds.size()
+        && data.antes is map && data.depois is map && data.antes.size() <= 100 && data.depois.size() <= 100;
+    }
+
+    function eventoUnidade(data, anterior, atual) {
+      let id = data.unidadeIds[0];
+      return data.unidadeIds.size() == 1 && id is string
+        && id.matches('^bloco-0[1-7]-[0-9]{3}$')
+        && data.antes.keys().hasOnly([id]) && data.antes.size() == 1
+        && data.depois.keys().hasOnly([id]) && data.depois.size() == 1
+        && data.antes[id] == anterior.marcacoes.get(id, null)
+        && data.depois[id] == atual.marcacoes.get(id, null)
+        && data.antes[id] != data.depois[id]
+        && (data.depois[id] == null || (data.depois[id] is string && data.depois[id].size() > 0 && data.depois[id].size() <= 128))
+        && atual.marcacoes.diff(anterior.marcacoes).affectedKeys().hasOnly([id]);
+    }
+
+    function eventoEdicao(data, userId, obraId, eventoId) {
+      let anterior = get(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId)).data;
+      let atual = getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId)).data;
+      return anterior.userId == userId && schemaConhecido(anterior)
+        && atual.userId == userId && atual.obraId == obraId && atual.ultimoEventoId == eventoId
+        && data.mapaNome == anterior.nome && data.nomeAnterior == anterior.nome && data.nomeAtual == atual.nome
+        && (!('kitId' in anterior) || perfilEstoque(userId))
+        && ((data.acao == 'unidade' && atual.nome == anterior.nome && eventoUnidade(data, anterior, atual))
+          || (data.acao == 'marcacoes' && atual.nome == anterior.nome
+            && data.antes == anterior.marcacoes && data.depois == atual.marcacoes
+            && data.antes != data.depois
+            && data.unidadeIds.toSet() == atual.marcacoes.diff(anterior.marcacoes).affectedKeys())
+          || (data.acao == 'renomear' && atual.nome != anterior.nome && atual.marcacoes == anterior.marcacoes
+            && data.antes == {} && data.depois == {} && data.unidadeIds == []));
+    }
+
+    function eventoCriacao(data, userId, obraId, eventoId) {
+      let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId);
+      let atual = getAfter(caminho).data;
+      return !exists(caminho) && atual.userId == userId && atual.obraId == obraId
+        && atual.ultimoEventoId == eventoId && data.mapaNome == atual.nome && data.nomeAtual == atual.nome
+        && data.nomeAnterior == null && data.unidadeIds == [] && data.antes == {} && data.depois == {};
+    }
+
+    function eventoExclusao(data, userId, obraId) {
+      let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId);
+      let anterior = get(caminho).data;
+      return anterior.userId == userId && schemaConhecido(anterior) && !existsAfter(caminho)
+        && (!('kitId' in anterior) || perfilEstoque(userId))
+        && data.mapaNome == anterior.nome && data.nomeAnterior == anterior.nome && data.nomeAtual == null
+        && data.antes == {} && data.depois == {} && data.unidadeIds == [];
+    }
+
+    match /usuarios/{userId}/obras/{obraId}/historico/{eventoId} {
+      allow read: if perfilPermitido(userId) && resource.data.userId == userId && resource.data.obraId == obraId;
+      allow create: if perfilPermitido(userId) && eventoEstruturado(request.resource.data, userId, obraId)
+        && ((request.resource.data.acao == 'criar' && eventoCriacao(request.resource.data, userId, obraId, eventoId))
+          || (request.resource.data.acao == 'excluir' && eventoExclusao(request.resource.data, userId, obraId))
+          || (request.resource.data.acao in ['unidade', 'marcacoes', 'renomear'] && eventoEdicao(request.resource.data, userId, obraId, eventoId)));
+      allow update, delete: if false;
+    }
+
     // Fontes de migracao preservadas. Nenhum cliente pode apaga-las ou altera-las.
     match /obras/{obraId}/mapas/{mapaId} {
       allow read: if request.auth != null && perfilPermitido(request.auth.uid)

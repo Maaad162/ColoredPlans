@@ -9,19 +9,22 @@ import {
   updateDoc,
   where,
   type Unsubscribe,
+  type SnapshotMetadata,
 } from "firebase/firestore";
 import { corTextoParaFundo, simboloDaLegenda } from "../config/statuses";
 import { CURRENT_SCHEMA_VERSION, lerSchemaVersion } from "../config/dados";
 import { legendasCollection } from "./caminhos";
 import type { LegendaUsuario } from "../types/planta";
+import { validarLegenda } from "./validacoes";
 
 export function observarLegendas(
   usuarioId: string,
-  aoAtualizar: (legendas: LegendaUsuario[]) => void,
+  aoAtualizar: (legendas: LegendaUsuario[], metadata: SnapshotMetadata) => void,
   aoFalhar: (erro: Error) => void,
 ): Unsubscribe {
   return onSnapshot(
     query(legendasCollection(usuarioId), where("userId", "==", usuarioId)),
+    { includeMetadataChanges: true },
     (snapshot) => {
       try {
         aoAtualizar(
@@ -50,7 +53,7 @@ export function observarLegendas(
                     : new Date().toISOString(),
               } satisfies LegendaUsuario;
             })
-            .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)),
+            .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)), snapshot.metadata,
         );
       } catch (erro) {
         aoFalhar(erro instanceof Error ? erro : new Error(String(erro)));
@@ -65,6 +68,7 @@ export function criarLegendaRemota(
   nome: string,
   cor: string,
 ) {
+  validarLegenda(nome, cor);
   const referencia = doc(legendasCollection(usuarioId));
   return setDoc(referencia, {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -84,6 +88,7 @@ export function editarLegendaRemota(
   nome: string,
   cor: string,
 ) {
+  validarLegenda(nome, cor);
   return updateDoc(doc(legendasCollection(usuarioId), legendaId), {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     nome: nome.trim().slice(0, 48),

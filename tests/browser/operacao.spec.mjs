@@ -1,0 +1,246 @@
+import { test, expect } from '@playwright/test';
+import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
+import { doc, setDoc, updateDoc, getDocFromServer, getDocs, collection, query, where } from 'firebase/firestore';
+
+const projeto = 'demo-coloredplans', obraId = 'obra-principal';
+let ambiente, uid, email, banco, errosPagina;
+const mapaPath = () => `usuarios/${uid}/obras/${obraId}/mapas/pintura`;
+const eventos = () => getDocs(query(collection(banco, `usuarios/${uid}/obras/${obraId}/historico`), where('userId', '==', uid), where('obraId', '==', obraId)));
+const estadoRemoto = async () => (await getDocFromServer(doc(banco, mapaPath()))).data().marcacoes;
+async function login(page) {
+  await page.goto('/');
+  await page.getByLabel('E-mail', { exact: true }).fill(email);
+  await page.getByLabel('Senha', { exact: true }).fill('senha-emulador');
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+}
+async function selecionar(page, bloco = '01') {
+  await page.getByLabel('Buscar número da unidade').fill('1');
+  await page.getByRole('button', { name: `Bloco ${bloco} · Unidade 001`, exact: true }).click();
+}
+const painel = page => page.getByRole('region', { name: 'Unidade selecionada' });
+async function rede(page, online) {
+  const fonte = await (await page.request.get('/src/config/firebase.ts')).text();
+  const modulo = fonte.match(/from "([^"]*firebase_firestore[^"]*)"/)[1];
+  await page.evaluate(async ({ modulo, online }) => {
+    const { db } = await import('/src/config/firebase.ts');
+    const sdk = await import(modulo);
+    await (online ? sdk.enableNetwork(db) : sdk.disableNetwork(db));
+  }, { modulo, online });
+}
+
+test.beforeAll(async () => {
+  if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('Testes exigem os dois emuladores.');
+  ambiente = await initializeTestEnvironment({ projectId: projeto });
+});
+test.afterAll(async () => { await ambiente.cleanup(); });
+test.beforeEach(async ({ page }, info) => {
+  await ambiente.clearFirestore();
+  email = `teste-${Date.now()}-${info.workerIndex}@example.invalid`;
+  const resposta = await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=emulator-only', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'senha-emulador', returnSecureToken: true }),
+  });
+  expect(resposta.ok).toBeTruthy();
+  uid = (await resposta.json()).localId;
+  banco = ambiente.authenticatedContext(uid).firestore();
+  await ambiente.withSecurityRulesDisabled(async c => {
+    const db = c.firestore();
+    if (!info.title.includes('sem perfil')) await setDoc(doc(db, `usuarios/${uid}`), {
+      schemaVersion: 1, userId: uid, tipoConta: info.title.includes('Apontamento') ? 'apontamento' : 'estoque', email,
+    });
+    await setDoc(doc(db, `usuarios/${uid}/obras/${obraId}`), { schemaVersion: 1, userId: uid, nome: 'Obra de teste' });
+    await setDoc(doc(db, mapaPath()), { schemaVersion: 1, userId: uid, obraId, nome: 'Pintura', tipo: 'manual', kitUnidadeIds: [], marcacoes: { 'bloco-01-001': 'pendente' } });
+    for (const [id, nome, cor] of [['pendente', 'Pendente', '#d9574f'], ['feito', 'Concluído', '#23875d']]) {
+      await setDoc(doc(db, `usuarios/${uid}/legendas/${id}`), { schemaVersion: 1, userId: uid, nome, cor });
+    }
+  });
+  errosPagina = [];
+  page.on('pageerror', erro => errosPagina.push(erro.message));
+  await login(page);
+});
+test.afterEach(() => { expect(errosPagina).toEqual([]); });
+
+test('Apontamento: login, planta, estado persistido, histórico contextual e reabertura', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: 'Planta do empreendimento' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Central de Kits', exact: true })).toHaveCount(0);
+  await selecionar(page);
+  await expect(painel(page).getByRole('button', { name: 'Pendente', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await painel(page).getByRole('button', { name: 'Concluído', exact: true }).click();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  await expect.poll(async () => (await estadoRemoto())['bloco-01-001']).toBe('feito');
+  await page.getByRole('button', { name: 'Histórico desta unidade' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Pendente → Concluído');
+  await expect(page.getByRole('dialog')).toContainText('Por você');
+  expect((await eventos()).size).toBe(1);
+  await page.getByRole('button', { name: 'Fechar histórico' }).click();
+  await page.reload();
+  await selecionar(page);
+  await expect(painel(page).getByRole('button', { name: 'Concluído', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Sair', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Entre na sua conta' })).toBeVisible();
+});
+
+test('offline: resposta local, pendência real, reconexão e histórico sem duplicação', async ({ page }) => {
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  await rede(page, false);
+  await expect(page.getByText('Offline · dados locais', { exact: true })).toBeVisible();
+  await selecionar(page);
+  await painel(page).getByRole('button', { name: 'Concluído', exact: true }).click();
+  await expect(painel(page).getByRole('button', { name: 'Concluído', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect((await estadoRemoto())['bloco-01-001']).toBe('pendente');
+  await expect(page.getByText('Sincronizado', { exact: true })).toHaveCount(0);
+  await rede(page, true);
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  expect((await estadoRemoto())['bloco-01-001']).toBe('feito');
+  expect((await eventos()).size).toBe(1);
+  await rede(page, false); await rede(page, true);
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  expect((await eventos()).size).toBe(1);
+});
+
+test('falha permanente: rollback, erro persistente e recuperação sem reload', async ({ page }) => {
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  await rede(page, false);
+  await ambiente.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), mapaPath()), { schemaVersion: 999 }));
+  await selecionar(page);
+  await painel(page).getByRole('button', { name: 'Concluído', exact: true }).click();
+  await rede(page, true);
+  await expect(page.getByText('Erro ao sincronizar', { exact: true })).toBeVisible();
+  expect((await estadoRemoto())['bloco-01-001']).toBe('pendente');
+  expect((await eventos()).size).toBe(0);
+  await expect(page.getByText('Missing or insufficient permissions')).toHaveCount(0);
+  await ambiente.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), mapaPath()), { schemaVersion: 1 }));
+  await expect(painel(page).getByRole('button', { name: 'Pendente', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Erro ao sincronizar', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  expect((await estadoRemoto())['bloco-01-001']).toBe('feito');
+  expect((await eventos()).size).toBe(1);
+});
+
+test('mapas: criar, trocar, renomear e excluir com confirmação', async ({ page }) => {
+  await page.getByRole('button', { name: 'Nova aba', exact: true }).click();
+  await page.getByLabel('Nome do serviço').fill('Elétrica');
+  await page.getByRole('button', { name: 'Criar aba', exact: true }).click();
+  await expect(page.getByRole('tab', { name: /Elétrica/ })).toBeVisible();
+  await selecionar(page);
+  await expect(painel(page)).toContainText('Não definido');
+  await page.getByRole('tab', { name: /Pintura/ }).click();
+  await selecionar(page);
+  await expect(painel(page).getByRole('button', { name: 'Pendente', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Renomear Elétrica', exact: true }).click();
+  await page.getByLabel('Nome do serviço').fill('Elétrica final');
+  await page.getByRole('button', { name: 'Renomear', exact: true }).click();
+  await expect(page.getByRole('tab', { name: /Elétrica final/ })).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Apagar aba Elétrica final', exact: true }).click();
+  await expect(page.getByRole('tab', { name: /Elétrica final/ })).toHaveCount(0);
+  await expect.poll(async () => (await eventos()).size).toBe(3);
+});
+
+test('legendas: criação, edição de cor, rejeição inválida e fallback seguro', async ({ page }) => {
+  await page.getByRole('button', { name: 'Cores e legendas', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await modal.getByLabel('Descrição/legenda').fill('Vistoria');
+  await modal.getByLabel('Cor', { exact: true }).fill('#123456');
+  await modal.getByRole('button', { name: 'Salvar legenda' }).click();
+  await expect(modal.getByRole('button', { name: /Vistoria.*marcações/ })).toBeVisible();
+  await modal.getByRole('button', { name: /Vistoria.*marcações/ }).click();
+  await modal.getByLabel('Cor', { exact: true }).fill('#abcdef');
+  await modal.getByRole('button', { name: 'Salvar legenda' }).click();
+  await expect(modal.getByRole('button', { name: 'Salvar legenda' })).toBeEnabled();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const docs = await getDocs(query(collection(banco, `usuarios/${uid}/legendas`), where('userId', '==', uid)));
+  expect(docs.docs.find(d => d.data().nome === 'Vistoria').data().cor).toBe('#abcdef');
+  const erro = await page.evaluate(async uid => {
+    const { editarLegendaRemota } = await import('/src/services/legendas.ts');
+    try { await editarLegendaRemota(uid, 'feito', 'Concluído', 'invalida'); return null; } catch (e) { return e.code ?? e.codigo; }
+  }, uid);
+  expect(erro).toBeTruthy();
+  page.once('dialog', dialog => dialog.accept());
+  await modal.getByRole('button', { name: 'Excluir Vistoria', exact: true }).click();
+  await expect(modal.getByRole('button', { name: /Vistoria.*marcações/ })).toHaveCount(0);
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const restantes = await getDocs(query(collection(banco, `usuarios/${uid}/legendas`), where('userId', '==', uid)));
+  expect(restantes.docs.some(d => d.data().nome === 'Vistoria')).toBe(false);
+  await modal.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await ambiente.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), mapaPath()), { 'marcacoes.bloco-01-001': 'legenda-removida' }));
+  await selecionar(page);
+  await expect(painel(page)).toContainText('Legenda indisponível');
+});
+
+test('Kits: criação, edição, vínculo, desassociação, isolamento e exclusão atômica', async ({ page }) => {
+  await page.getByRole('button', { name: 'Central de Kits', exact: true }).click();
+  await page.getByRole('button', { name: '+ Criar Kit', exact: true }).click();
+  await page.getByLabel('Nome do Kit').fill('Kit hidráulico');
+  await page.getByLabel('Cód. Sienge', { exact: true }).fill('100');
+  await page.getByLabel('Descrição', { exact: true }).fill('Tubo');
+  await page.getByRole('button', { name: 'Salvar Kit', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Kit hidráulico', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const resultado = await page.evaluate(async uid => {
+    const api = await import('/src/services/kits.ts');
+    const { db } = await import('/src/config/firebase.ts');
+    // Usa observação real para obter o documento criado pela interface.
+    const kits = await new Promise((resolve, reject) => { const cancelar = api.observarKits(uid, 'obra-principal', lista => { if (lista.length) { cancelar(); resolve(lista); } }, reject); });
+    const kit = kits[0];
+    await api.salvarKitRemoto(uid, 'obra-principal', { id: kit.id, nome: 'Kit final', materiais: kit.materiais });
+    await api.atualizarUnidadesKit(uid, 'obra-principal', kit.id, ['bloco-01-001', 'bloco-02-001']);
+    let negado = false;
+    try { await api.atualizarUnidadesKit(uid, 'outra-obra', kit.id, []); } catch { negado = true; }
+    await api.atualizarUnidadesKit(uid, 'obra-principal', kit.id, []);
+    return { kitId: kit.id, mapaId: kit.mapaId, negado, bancoDisponivel: Boolean(db) };
+  }, uid);
+  expect(resultado.negado).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Kit final', exact: true })).toBeVisible();
+  expect((await getDocFromServer(doc(banco, `usuarios/${uid}/kits/${resultado.kitId}`))).data().unidadeIds).toEqual([]);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Excluir Kit', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Nenhum Kit cadastrado' })).toBeVisible();
+  expect((await getDocFromServer(doc(banco, `usuarios/${uid}/obras/${obraId}/mapas/${resultado.mapaId}`))).exists()).toBe(false);
+});
+
+test('sem perfil: login válido não libera planta nem escolha de setor', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: 'Conta aguardando liberação' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Planta do empreendimento' })).toHaveCount(0);
+  await expect(page.getByRole('radio')).toHaveCount(0);
+});
+
+test('importação agrupada, exportação e paginação limitada do histórico', async ({ page }) => {
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const arquivo = { version: 1, unidades: [
+    { bloco: '01', numero: '001', status: 'feito' },
+    { bloco: '02', numero: '001', status: 'feito' },
+  ] };
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('input[type=file]').setInputFiles({ name: 'marcacoes.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(arquivo)) });
+  await expect.poll(async () => (await eventos()).size).toBe(1);
+  const grupo = (await eventos()).docs[0].data();
+  expect(grupo.acao).toBe('marcacoes');
+  expect(grupo.unidadeIds.sort()).toEqual(['bloco-01-001', 'bloco-02-001']);
+  expect(await estadoRemoto()).toEqual({ 'bloco-01-001': 'feito', 'bloco-02-001': 'feito' });
+  const baixando = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'JSON', exact: true }).click();
+  const download = await baixando;
+  expect(await download.failure()).toBeNull();
+  const stream = await download.createReadStream();
+  const partes = [];
+  for await (const parte of stream) partes.push(parte);
+  const exportado = JSON.parse(Buffer.concat(partes).toString());
+  expect(exportado.version).toBe(1);
+  expect(exportado.unidades.filter(u => u.status === 'feito')).toHaveLength(2);
+  await selecionar(page);
+  for (let i = 0; i < 20; i++) {
+    await painel(page).getByRole('button', { name: i % 2 ? 'Concluído' : 'Pendente', exact: true }).click();
+    await expect.poll(async () => (await eventos()).size).toBe(i + 2);
+  }
+  await page.getByRole('button', { name: 'Histórico deste mapa' }).click();
+  const lista = page.getByRole('list', { name: 'Eventos do histórico' });
+  await expect(lista.locator(':scope > li')).toHaveCount(20);
+  await page.getByRole('button', { name: 'Mais antigos', exact: true }).click();
+  await expect(lista.locator(':scope > li')).toHaveCount(1);
+  await expect(lista).toContainText('2 unidade(s) alterada(s)');
+  await expect(page.getByRole('button', { name: 'Mais antigos', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Mais recentes', exact: true }).click();
+  await expect(lista.locator(':scope > li')).toHaveCount(20);
+});

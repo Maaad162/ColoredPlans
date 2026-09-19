@@ -6,6 +6,7 @@ import {
 import { COLECOES, CURRENT_SCHEMA_VERSION, lerSchemaVersion, validarId } from "../config/dados.ts";
 import { planejarMigracaoV1 } from "./migracoes/planejarV1.ts";
 import type { Obra } from "../types/planta";
+import { ErroOperacional } from "./erros.ts";
 
 const emAndamento = new WeakMap<Firestore, Map<string, Promise<void>>>();
 
@@ -31,7 +32,7 @@ function dadosIguais(a: unknown, b: unknown): boolean {
 export function conferirDocumentoDaMigracao(atual: DocumentSnapshot, original?: DocumentSnapshot) {
   // Snapshots também comparam estado interno; JSON depende da ordem das chaves.
   if (original ? !dadosIguais(atual.data(), original.data()) : atual.exists()) {
-    throw new Error(`Dados alterados durante a migração (${atual.ref.path}). Recarregue para tentar novamente; nenhuma alteração concorrente foi sobrescrita.`);
+    throw new ErroOperacional("conflito", "Dados alterados durante a migração. Tente novamente; nenhuma alteração concorrente foi sobrescrita.");
   }
 }
 
@@ -50,12 +51,12 @@ async function executarMigracao(db: Firestore, usuarioId: string, obra: Obra, es
   const referencia = doc(db, COLECOES.usuarios, validarId(usuarioId), COLECOES.obras, validarId(obra.id));
   const obraAtual = await getDocFromServer(referencia);
   if (obraAtual.exists() && obraAtual.data().userId !== usuarioId) {
-    throw new Error("Proprietário inválido na obra. Solicite revisão administrativa.");
+    throw new ErroOperacional("validacao", "Proprietário inválido na obra. Solicite revisão administrativa.");
   }
   if (lerSchemaVersion(obraAtual.data()?.schemaVersion) === CURRENT_SCHEMA_VERSION) return;
   const nomeObra = obraAtual.data()?.nome ?? obra.nome;
   if (typeof nomeObra !== "string" || !nomeObra.trim() || nomeObra.length > 100) {
-    throw new Error("Nome inválido na obra. Solicite revisão administrativa.");
+    throw new ErroOperacional("validacao", "Nome inválido na obra. Solicite revisão administrativa.");
   }
   const mapasRef = collection(referencia, COLECOES.mapas);
   const kitsRef = collection(db, COLECOES.usuarios, usuarioId, COLECOES.kits);

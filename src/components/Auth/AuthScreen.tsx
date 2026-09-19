@@ -1,20 +1,12 @@
-import { FirebaseError } from "firebase/app";
+import { registrarErro, traduzirErro } from "../../services/erros";
 import { useState } from "react";
 
 interface AuthScreenProps {
   onEntrar: (email: string, senha: string) => Promise<void>;
+  erroInicial?: string | null;
 }
 
-const mensagensErro: Record<string, string> = {
-  "auth/invalid-credential": "E-mail ou senha incorretos.",
-  "auth/invalid-email": "Digite um endereço de e-mail válido.",
-  "auth/too-many-requests": "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
-  "auth/network-request-failed": "Não foi possível conectar ao Firebase. Verifique a internet.",
-  "auth/operation-not-allowed":
-    "O login por e-mail e senha ainda não foi habilitado no Firebase.",
-};
-
-export function AuthScreen({ onEntrar }: AuthScreenProps) {
+export function AuthScreen({ onEntrar, erroInicial }: AuthScreenProps) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -27,11 +19,8 @@ export function AuthScreen({ onEntrar }: AuthScreenProps) {
     try {
       await onEntrar(email, senha);
     } catch (falha) {
-      const mensagem =
-        falha instanceof FirebaseError
-          ? mensagensErro[falha.code] ?? "Não foi possível entrar. Verifique seus dados."
-          : "Não foi possível entrar. Tente novamente.";
-      setErro(mensagem);
+      registrarErro("login", falha);
+      setErro(traduzirErro(falha).mensagem);
     } finally {
       setEnviando(false);
     }
@@ -82,7 +71,7 @@ export function AuthScreen({ onEntrar }: AuthScreenProps) {
             required
           />
 
-          {erro && <p className="auth-error" role="alert">{erro}</p>}
+          {(erro || erroInicial) && <p className="auth-error" role="alert">{erro || erroInicial}</p>}
 
           <button className="button button--primary auth-submit" type="submit" disabled={enviando}>
             {enviando ? "Entrando…" : "Entrar"}

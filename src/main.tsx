@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { OBRA_PADRAO } from "./config/dados";
+import { registrarErro, traduzirErro } from "./services/erros";
 import "./styles/index.css";
 
 const rootElement = document.getElementById("root");
@@ -21,8 +22,8 @@ async function iniciarAplicacao() {
       </StrictMode>,
     );
   } catch (erro) {
-    const detalhe =
-      erro instanceof Error ? erro.message : "Erro desconhecido ao iniciar a aplicação.";
+    registrarErro("inicialização", erro);
+    const detalhe = traduzirErro(erro).mensagem;
 
     root.render(
       <main

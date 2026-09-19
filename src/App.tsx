@@ -16,6 +16,11 @@ import { useAuth } from "./hooks/useAuth";
 import { useLegendas } from "./hooks/useLegendas";
 import { usePerfil } from "./hooks/usePerfil";
 import { usePlanta } from "./hooks/usePlanta";
+import { useKits } from "./hooks/useKits";
+import { ProvedorSincronizacao } from "./hooks/useSincronizacao";
+import { IndicadorSincronizacao, FalhasSincronizacao } from "./components/EstadoSincronizacao";
+import { registrarErro, traduzirErro } from "./services/erros";
+import { Historico } from "./components/Historico";
 import {
   baixarMarcacoes,
   baixarCsvMapas,
@@ -24,10 +29,10 @@ import {
 import type { Obra, PerfilUsuario } from "./types/planta";
 
 export default function App({ obra }: { obra: Obra }) {
-  const { usuario, carregando, entrar, sair } = useAuth();
+  const { usuario, carregando, entrar, sair, erro } = useAuth();
 
   if (carregando) return <AuthLoading />;
-  if (!usuario) return <AuthScreen onEntrar={entrar} />;
+  if (!usuario) return <AuthScreen onEntrar={entrar} erroInicial={erro} />;
 
   return <ContaAutenticada key={`${usuario.uid}:${obra.id}`} usuario={usuario} obra={obra} onSair={sair} />;
 }
@@ -46,18 +51,19 @@ function ContaAutenticada({ usuario, obra, onSair }: ContaAutenticadaProps) {
       <ContaPendente
         email={usuario.email ?? "Usuário autenticado"}
         erro={perfilState.erro}
+        onTentar={perfilState.tentarNovamente}
         onSair={onSair}
       />
     );
   }
   return (
-    <AplicacaoMapas
+    <ProvedorSincronizacao key={`${usuario.uid}:${obra.id}:${perfilState.perfil.tipoConta}`}><AplicacaoMapas
       usuario={usuario}
       key={`${usuario.uid}:${obra.id}:${perfilState.perfil.tipoConta}`}
       obra={obra}
       perfil={perfilState.perfil}
       onSair={onSair}
-    />
+    /></ProvedorSincronizacao>
   );
 }
 
@@ -67,6 +73,7 @@ interface AplicacaoMapasProps extends ContaAutenticadaProps {
 
 function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) {
   const legendasState = useLegendas(usuario.uid);
+  const kitsState = useKits(usuario.uid, obra.id, perfil.tipoConta === "estoque");
   const planta = usePlanta(
     usuario.uid,
     obra,
@@ -76,6 +83,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
   const [zoom, setZoom] = useState(0.8);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [secaoAtiva, setSecaoAtiva] = useState<"mapas" | "kits">("mapas");
+  const [historico, setHistorico] = useState<{ mapaId?: string; unidadeId?: string } | null>(null);
 
   useEffect(() => {
     if (!mensagem) return;
@@ -85,8 +93,8 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
 
   if (legendasState.carregando || !planta.abaAtual) return <>
     <AuthLoading />
-    <p role="status">{planta.estadoSalvamento}</p>
-    {planta.erroSincronizacao && <p role="alert">{planta.erroSincronizacao}</p>}
+    <IndicadorSincronizacao />
+    <FalhasSincronizacao />
   </>;
 
   async function importar(arquivo: File) {
@@ -105,8 +113,8 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
       planta.substituirMarcacoes(novasMarcacoes);
       setMensagem("Importação enviada para sincronização.");
     } catch (erro) {
-      const detalhe = erro instanceof Error ? erro.message : "Arquivo inválido.";
-      setMensagem(`Não foi possível importar: ${detalhe}`);
+      registrarErro("importação", erro);
+      setMensagem(traduzirErro(erro).mensagem);
     }
   }
 
@@ -134,15 +142,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
           </div>
         </div>
         <div className="header-meta">
-          <span
-            role="status"
-            className={`header-meta__live${
-              planta.erroSincronizacao ? " header-meta__live--erro" : ""
-            }`}
-          >
-            <i />
-            {planta.estadoSalvamento}
-          </span>
+          <IndicadorSincronizacao />
           <span className="header-meta__divider" />
           <span className={`account-badge account-badge--${perfil.tipoConta}`}>
             {perfil.tipoConta === "estoque" ? "Estoque" : "Apontamento"}
@@ -153,24 +153,18 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
           <span className="header-user" title={usuario.email ?? "Usuário autenticado"}>
             {usuario.email}
           </span>
-          <button className="header-logout" type="button" onClick={() => void onSair()}>
+          <button className="header-logout" type="button" onClick={() => void onSair().catch(erro => { registrarErro("saída", erro); setMensagem(traduzirErro(erro).mensagem); })}>
             Sair
           </button>
         </div>
       </header>
 
       <main className="app-main">
-        {planta.erroSincronizacao && (
-          <div className="sync-warning" role="alert">
-            {planta.erroSincronizacao}
-          </div>
-        )}
-        {legendasState.erro && (
-          <div className="sync-warning" role="alert">{legendasState.erro}</div>
-        )}
+        <FalhasSincronizacao />
 
         <nav className="section-nav" aria-label="Áreas da aplicação">
           <div className="section-nav__tabs">
+            <button className="section-nav__tab" type="button" onClick={() => setHistorico({})}>Histórico da obra</button>
             <button type="button" className={secaoAtiva === "mapas" ? "section-nav__tab section-nav__tab--active" : "section-nav__tab"} onClick={() => setSecaoAtiva("mapas")}>Mapas e marcações</button>
             {perfil.tipoConta === "estoque" && (
               <button type="button" className={secaoAtiva === "kits" ? "section-nav__tab section-nav__tab--active" : "section-nav__tab"} onClick={() => setSecaoAtiva("kits")}>Central de Kits</button>
@@ -188,8 +182,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
 
         {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
           <CentralKits
-            usuarioId={usuario.uid}
-            obraId={obra.id}
+            kitsState={kitsState}
             onMensagem={setMensagem}
             onAbrirMapa={(mapaId) => {
               planta.selecionarAba(mapaId);
@@ -215,6 +208,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
         />
 
         <BuscaUnidade unidades={planta.unidades} onSelecionar={planta.localizarUnidade} />
+        <button className="link-button" type="button" onClick={() => setHistorico({ mapaId: planta.abaAtual.id })}>Histórico deste mapa</button>
         <Toolbar
           blocos={planta.blocos}
           legendas={planta.statuses}
@@ -281,6 +275,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
 
           <aside className="sidebar" aria-label="Informações da planta">
             <PainelUnidade
+              onHistorico={() => setHistorico({ mapaId: planta.abaAtual.id, unidadeId: planta.unidadeSelecionada?.id })}
               unidade={planta.unidadeSelecionada}
               legendas={planta.statuses}
               statusId={
@@ -305,6 +300,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
         )}
       </main>
 
+      {historico && <Historico usuarioId={usuario.uid} obraId={obra.id} legendas={planta.statuses} {...historico} onFechar={() => setHistorico(null)} />}
       {mensagem && (
         <div className="toast" role="status" aria-live="polite">
           {mensagem}

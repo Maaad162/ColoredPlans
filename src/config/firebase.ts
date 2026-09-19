@@ -1,9 +1,10 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
 import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  connectFirestoreEmulator,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -34,3 +35,11 @@ export const db = initializeFirestore(firebaseApp, {
     tabManager: persistentMultipleTabManager(),
   }),
 });
+
+if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
+  if (!firebaseConfig.projectId.startsWith("demo-") || !["localhost", "127.0.0.1"].includes(location.hostname)) {
+    throw new Error("Emuladores exigem projeto demo e execução local.");
+  }
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+}
