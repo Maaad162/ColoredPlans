@@ -1,4 +1,4 @@
-import { CURRENT_SCHEMA_VERSION, OBRA_PADRAO_ID, lerSchemaVersion, validarId } from "../../config/dados.ts";
+import { COLECOES, CURRENT_SCHEMA_VERSION, lerObraIdDoKit, lerSchemaVersion, validarId } from "../../config/dados.ts";
 import { UNIDADE_BY_ID } from "../../data/planta.ts";
 
 export interface DocumentoLegado {
@@ -26,6 +26,7 @@ function validarUnidades(ids: unknown): asserts ids is string[] {
 }
 
 function validarMapa(mapa: DocumentoLegado) {
+  validarId(mapa.id);
   lerSchemaVersion(mapa.data.schemaVersion);
   validarNome(mapa.data.nome);
   if (mapa.data.kitId !== undefined) {
@@ -47,8 +48,32 @@ function validarMapa(mapa: DocumentoLegado) {
 const nomeComparavel = (nome: unknown) => String(nome).normalize("NFD")
   .replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
 
-// Cada grupo é atômico. Conflitos interrompem o plano, sem apagar ou adivinhar dados.
 export function planejarMigracaoV1(
+  usuarioId: string,
+  obraId: string,
+  mapasAtuais: DocumentoLegado[],
+  kitsDoUsuario: DocumentoLegado[],
+  mapasGlobais: DocumentoLegado[],
+): AlteracaoMigracao[][] {
+  validarId(usuarioId);
+  validarId(obraId);
+  const grupos = planejarPassoV1(usuarioId, obraId, mapasAtuais, kitsDoUsuario, mapasGlobais);
+  const mapas = new Map(mapasAtuais.map((item) => [item.id, item]));
+  const kits = new Map(kitsDoUsuario.map((item) => [item.id, item]));
+  for (const grupo of grupos) for (const item of grupo) {
+    const destino = item.colecao === "mapas" ? mapas : kits;
+    destino.set(item.id, { id: item.id, data: { ...destino.get(item.id)?.data, ...item.dados } });
+  }
+  // Valida a saída com o mesmo contrato: o estado resultante deve ser válido e
+  // não exigir outra migração. Essa simulação não altera documentos de entrada.
+  if (planejarPassoV1(usuarioId, obraId, [...mapas.values()], [...kits.values()], mapasGlobais).length) {
+    throw new Error("A migração não produziu um estado completo na versão 1. Nenhum dado foi gravado.");
+  }
+  return grupos;
+}
+
+// Cada grupo é atômico. Conflitos interrompem o plano, sem apagar ou adivinhar dados.
+function planejarPassoV1(
   usuarioId: string,
   obraId: string,
   mapasAtuais: DocumentoLegado[],
@@ -73,7 +98,7 @@ export function planejarMigracaoV1(
       || (Array.isArray(legado.data.kitUnidadeIds) && legado.data.kitUnidadeIds.length > 0)) {
       throw new Error(`Vínculo de Kit no mapa global ${legado.id}. Solicite revisão administrativa.`);
     }
-    const origemLegada = `obras/${obraId}/mapas/${legado.id}`;
+    const origemLegada = `${COLECOES.obras}/${obraId}/${COLECOES.mapas}/${legado.id}`;
     const existente = mapas.get(legado.id);
     if (existente) {
       if (existente.data.origemLegada === origemLegada) continue;
@@ -87,7 +112,21 @@ export function planejarMigracaoV1(
     copiasLegadas.set(legado.id, data);
   }
 
-  const kits = kitsDoUsuario.filter((kit) => (kit.data.obraId ?? OBRA_PADRAO_ID) === obraId);
+  const kits = kitsDoUsuario.filter((kit) => lerObraIdDoKit(kit.data.obraId) === obraId);
+  const reservados = new Map<string, string>();
+  const kitsSemVinculoPorNome = new Map<string, number>();
+  for (const kit of kits) {
+    validarId(kit.id);
+    if (kit.data.mapaId !== undefined) {
+      if (typeof kit.data.mapaId !== "string") throw new Error(`Referência de mapa inválida no Kit ${kit.id}.`);
+      validarId(kit.data.mapaId);
+      if (reservados.has(kit.data.mapaId)) throw new Error(`Colisão no mapa ${kit.data.mapaId}.`);
+      reservados.set(kit.data.mapaId, kit.id);
+    } else if (![...mapas.values()].some((mapa) => mapa.data.kitId === kit.id)) {
+      const nome = nomeComparavel(kit.data.nome);
+      kitsSemVinculoPorNome.set(nome, (kitsSemVinculoPorNome.get(nome) ?? 0) + 1);
+    }
+  }
   const atribuidos = new Set<string>();
   for (const kit of kits) {
     const versao = lerSchemaVersion(kit.data.schemaVersion);
@@ -96,19 +135,20 @@ export function planejarMigracaoV1(
       || (versao === CURRENT_SCHEMA_VERSION && kit.data.obraId !== obraId)) {
       throw new Error(`Obra inválida no Kit ${kit.id}.`);
     }
-    if (kit.data.mapaId !== undefined) {
-      if (typeof kit.data.mapaId !== "string") throw new Error(`Referência de mapa inválida no Kit ${kit.id}.`);
-      validarId(kit.data.mapaId);
-    }
     validarNome(kit.data.nome);
     validarUnidades(kit.data.unidadeIds);
     const unidadeIds = kit.data.unidadeIds;
+    const materiaisIds = new Set<string>();
     if (!Array.isArray(kit.data.materiais) || !kit.data.materiais.length
       || kit.data.materiais.some((material: unknown) => {
         if (!material || typeof material !== "object") return true;
         const item = material as Record<string, unknown>;
-        return typeof item.id !== "string" || typeof item.codigoSienge !== "string"
+        if (typeof item.id !== "string" || !item.id.trim() || materiaisIds.has(item.id)) return true;
+        materiaisIds.add(item.id);
+        return typeof item.codigoSienge !== "string"
           || typeof item.descricao !== "string" || typeof item.detalhe !== "string"
+          || item.codigoSienge.trim().length > 32 || item.descricao.trim().length > 100
+          || item.detalhe.trim().length > 180
           || typeof item.quantidadePorKit !== "number" || !Number.isFinite(item.quantidadePorKit)
           || item.quantidadePorKit <= 0;
       })) throw new Error(`Materiais inválidos no Kit ${kit.id}.`);
@@ -121,8 +161,12 @@ export function planejarMigracaoV1(
       mapa = mapas.get(kit.data.mapaId) ?? mapa;
     } else if (!mapa) {
       const candidatos = [...mapas.values()].filter((item) => !item.data.kitId
+        && !reservados.has(item.id)
         && !atribuidos.has(item.id) && nomeComparavel(item.data.nome) === nomeComparavel(kit.data.nome));
-      if (candidatos.length > 1) throw new Error(`Nome ambíguo no Kit ${kit.id}.`);
+      if (candidatos.length > 1 || (candidatos.length > 0
+        && (kitsSemVinculoPorNome.get(nomeComparavel(kit.data.nome)) ?? 0) > 1)) {
+        throw new Error(`Nome ambíguo no Kit ${kit.id}.`);
+      }
       mapa = candidatos[0];
     }
     if (mapa && (atribuidos.has(mapa.id) || (mapa.data.kitId && mapa.data.kitId !== kit.id))) {
@@ -131,6 +175,7 @@ export function planejarMigracaoV1(
     const mapaId = mapa?.id ?? (typeof kit.data.mapaId === "string" && kit.data.mapaId
       ? kit.data.mapaId : `mapa-kit-${kit.id}`);
     if (!mapaId.trim() || mapaId.includes("/") || atribuidos.has(mapaId)
+      || (reservados.has(mapaId) && reservados.get(mapaId) !== kit.id)
       || (!mapa && mapas.has(mapaId))) throw new Error(`Colisão no mapa ${mapaId}.`);
     if (mapa && Array.isArray(mapa.data.kitUnidadeIds) && mapa.data.kitUnidadeIds.length > 0
       && (mapa.data.kitUnidadeIds.length !== unidadeIds.length

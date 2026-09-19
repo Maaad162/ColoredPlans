@@ -14,17 +14,25 @@ export interface StatusConfig {
   simbolo: string;
 }
 
+/** Setor provisionado administrativamente; não é escolhido pelo usuário final. */
 export type TipoConta = "apontamento" | "estoque";
 
 export function tipoContaValido(valor: unknown): valor is TipoConta {
   return valor === "apontamento" || valor === "estoque";
 }
 
+/** Entidade de execução à qual os mapas se referem, independente do usuário. */
 export interface Obra {
   id: string;
   nome: string;
 }
 
+/**
+ * Representação de leitura de usuarios/{uid} na aplicação.
+ * userId corresponde ao UID do Authentication e ao ID do documento.
+ * criadoEm é convertido de Timestamp para ISO pelo serviço de perfil.
+ * A imutabilidade do setor é garantida pelas regras Firestore, não pelo tipo TS.
+ */
 export interface PerfilUsuario {
   schemaVersion: SchemaVersion;
   userId: string;

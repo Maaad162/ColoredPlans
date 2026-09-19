@@ -1,17 +1,17 @@
 import { collection, doc } from "firebase/firestore";
 import { db } from "../config/firebase";
-import { validarId } from "../config/dados";
+import { COLECOES, validarId } from "../config/dados";
 
 export function perfilDocument(usuarioId: string) {
-  return doc(db, "usuarios", validarId(usuarioId));
+  return doc(db, COLECOES.usuarios, validarId(usuarioId));
 }
 
 export function obraDocument(usuarioId: string, obraId: string) {
-  return doc(perfilDocument(usuarioId), "obras", validarId(obraId));
+  return doc(perfilDocument(usuarioId), COLECOES.obras, validarId(obraId));
 }
 
 export function mapasCollection(usuarioId: string, obraId: string) {
-  return collection(obraDocument(usuarioId, obraId), "mapas");
+  return collection(obraDocument(usuarioId, obraId), COLECOES.mapas);
 }
 
 export function mapaDocument(usuarioId: string, obraId: string, mapaId: string) {
@@ -20,9 +20,9 @@ export function mapaDocument(usuarioId: string, obraId: string, mapaId: string) 
 
 // Preserva os IDs e caminhos existentes; cada Kit declara explicitamente sua obra.
 export function kitsCollection(usuarioId: string) {
-  return collection(perfilDocument(usuarioId), "kits");
+  return collection(perfilDocument(usuarioId), COLECOES.kits);
 }
 
 export function legendasCollection(usuarioId: string) {
-  return collection(perfilDocument(usuarioId), "legendas");
+  return collection(perfilDocument(usuarioId), COLECOES.legendas);
 }

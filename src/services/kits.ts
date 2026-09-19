@@ -10,7 +10,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
-import { CURRENT_SCHEMA_VERSION, OBRA_PADRAO_ID, lerSchemaVersion } from "../config/dados";
+import { CURRENT_SCHEMA_VERSION, lerObraIdDoKit, lerSchemaVersion } from "../config/dados";
 import { kitsCollection, mapaDocument } from "./caminhos";
 import { UNIDADE_BY_ID } from "../data/planta";
 import type { Kit, MaterialKit } from "../types/planta";
@@ -79,7 +79,7 @@ export function observarKits(
     (snapshot) => {
       try {
         const kits = snapshot.docs
-          .filter((documento) => (documento.data().obraId ?? OBRA_PADRAO_ID) === obraId)
+          .filter((documento) => lerObraIdDoKit(documento.data().obraId) === obraId)
           .map((documento) => {
             const data = documento.data();
             return {
@@ -127,7 +127,7 @@ export async function salvarKitRemoto(
     await runTransaction(db, async (transacao) => {
       const kitSnapshot = await transacao.get(referenciaKit);
       if (!kitSnapshot.exists()) throw new Error("O Kit não existe mais.");
-      if ((kitSnapshot.data().obraId ?? OBRA_PADRAO_ID) !== obraId) {
+      if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
         throw new Error("O Kit pertence a outra obra.");
       }
       lerSchemaVersion(kitSnapshot.data().schemaVersion);
@@ -195,7 +195,7 @@ export async function excluirKitRemoto(usuarioId: string, obraId: string, kitId:
   await runTransaction(db, async (transacao) => {
     const kitSnapshot = await transacao.get(referenciaKit);
     if (!kitSnapshot.exists()) return;
-    if ((kitSnapshot.data().obraId ?? OBRA_PADRAO_ID) !== obraId) {
+    if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
       throw new Error("O Kit pertence a outra obra.");
     }
     lerSchemaVersion(kitSnapshot.data().schemaVersion);
@@ -224,7 +224,7 @@ export async function atualizarUnidadesKit(
   await runTransaction(db, async (transacao) => {
     const kitSnapshot = await transacao.get(referenciaKit);
     if (!kitSnapshot.exists()) throw new Error("O Kit não existe mais.");
-    if ((kitSnapshot.data().obraId ?? OBRA_PADRAO_ID) !== obraId) {
+    if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
       throw new Error("O Kit pertence a outra obra.");
     }
     lerSchemaVersion(kitSnapshot.data().schemaVersion);

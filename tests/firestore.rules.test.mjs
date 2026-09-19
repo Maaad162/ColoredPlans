@@ -16,15 +16,15 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
-import { CURRENT_SCHEMA_VERSION, OBRA_PADRAO_ID } from "../src/config/dados.ts";
+import { CURRENT_SCHEMA_VERSION, OBRA_LEGADA_ID } from "../src/config/dados.ts";
 
-const escopo = { schemaVersion: CURRENT_SCHEMA_VERSION, obraId: OBRA_PADRAO_ID };
+const escopo = { schemaVersion: CURRENT_SCHEMA_VERSION, obraId: OBRA_LEGADA_ID };
 const projeto = "lmcoloredplans";
 const usuario1 = "usuario-1";
 const usuario2 = "usuario-2";
 const usuario3 = "usuario-3";
 const caminhoMapas = (uid) =>
-  `usuarios/${uid}/obras/${OBRA_PADRAO_ID}/mapas`;
+  `usuarios/${uid}/obras/${OBRA_LEGADA_ID}/mapas`;
 const caminhoKits = (uid) => `usuarios/${uid}/kits`;
 
 const material = {
@@ -80,7 +80,7 @@ try {
         nome: "Pintura",
         marcacoes: { "bloco-01-001": "pendente" },
       }),
-      setDoc(doc(banco, "obras/obra-principal/mapas/legado"), {
+      setDoc(doc(banco, `obras/${OBRA_LEGADA_ID}/mapas/legado`), {
         criadoPor: usuario1,
         nome: "Mapa legado",
         marcacoes: {},
@@ -123,6 +123,8 @@ try {
     throw new Error("Renomear o mapa manual deve preservar suas marcações.");
   }
   await assertFails(updateDoc(mapa1, { nome: "" }));
+  await assertFails(updateDoc(mapa1, { nome: "   " }));
+  await assertFails(updateDoc(mapa1, { nome: "\t\n" }));
   await assertSucceeds(getDoc(mapa2));
   await assertFails(getDoc(mapa1ComoUsuario2));
   await assertSucceeds(updateDoc(mapa1, {
@@ -180,6 +182,12 @@ try {
   await assertSucceeds(updateDoc(mapa2, {
     "marcacoes.bloco-01-002": "aguardando",
   }));
+  await assertFails(setDoc(doc(banco2, `usuarios/${usuario2}/legendas/vazia`), {
+    ...escopo, userId: usuario2, nome: "   ", cor: "#8059b6",
+  }));
+  await assertFails(setDoc(doc(banco2, `usuarios/${usuario2}/obras/vazia`), {
+    ...escopo, userId: usuario2, nome: "   ",
+  }));
 
   // Migração compatível: associa os dois documentos antigos sem apagar marcações.
   const kitLegado = doc(banco1, caminhoKits(usuario1), "hidraulico");
@@ -221,6 +229,11 @@ try {
   loteRenomear.update(kitLegado, { nome: "Hidráulico renomeado" });
   loteRenomear.update(mapaLegadoKit, { nome: "Hidráulico renomeado" });
   await assertSucceeds(loteRenomear.commit());
+
+  const loteNomeVazio = writeBatch(banco1);
+  loteNomeVazio.update(kitLegado, { nome: "   " });
+  loteNomeVazio.update(mapaLegadoKit, { nome: "   " });
+  await assertFails(loteNomeVazio.commit());
 
   // Criação atômica do exemplo Isométrico.
   const kitIsometrico = doc(banco1, caminhoKits(usuario1), "isometrico");
@@ -308,8 +321,8 @@ try {
   loteExclusao.delete(mapaIsometrico);
   await assertSucceeds(loteExclusao.commit());
 
-  const legadoGlobal1 = doc(banco1, "obras/obra-principal/mapas/legado");
-  const legadoGlobal2 = doc(banco2, "obras/obra-principal/mapas/legado");
+  const legadoGlobal1 = doc(banco1, `obras/${OBRA_LEGADA_ID}/mapas/legado`);
+  const legadoGlobal2 = doc(banco2, `obras/${OBRA_LEGADA_ID}/mapas/legado`);
   await assertSucceeds(getDoc(legadoGlobal1));
   await assertFails(getDoc(legadoGlobal2));
   await assertFails(deleteDoc(legadoGlobal1));
@@ -362,7 +375,7 @@ try {
   await assertSucceeds(setDoc(mapaB, { ...escopo, obraId: obraB, userId: usuario1, nome: "Obra B", marcacoes: {} }));
   await assertSucceeds(updateDoc(mapaB, { "marcacoes.bloco-01-001": "obra-b-status" }));
   if ((await getDoc(mapa1)).data().marcacoes["bloco-01-001"] !== "concluido") throw new Error("Vazamento entre obras.");
-  await assertFails(updateDoc(mapaB, { obraId: OBRA_PADRAO_ID }));
+  await assertFails(updateDoc(mapaB, { obraId: OBRA_LEGADA_ID }));
   await assertFails(getDoc(doc(banco2, mapaB.path)));
   await assertFails(setDoc(doc(banco1, `usuarios/${usuario1}/obras/${obraB}/mapas/falso-kit`), {
     ...escopo, obraId: obraB, userId: usuario1, nome: "Hidráulico renomeado",

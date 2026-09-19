@@ -1,4 +1,4 @@
-import { OBRA_PADRAO_ID } from "../config/dados.ts";
+import { OBRA_LEGADA_ID } from "../config/dados.ts";
 import type {
   ArquivoMarcacoes,
   Marcacoes,
@@ -41,7 +41,7 @@ export function baixarCsvMapas(mapas: MapaServico[], unidades: Unidade[], legend
 export function carregarAbaAtiva(usuarioId: string, obraId: string): string | null {
   try {
     return localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}:${obraId}`)
-      ?? (obraId === OBRA_PADRAO_ID ? localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`) : null);
+      ?? (obraId === OBRA_LEGADA_ID ? localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`) : null);
   } catch {
     return null;
   }
@@ -104,6 +104,12 @@ export function validarArquivoImportacao(
 ): Marcacoes {
   if (!conteudo || typeof conteudo !== "object") {
     throw new Error("O arquivo não contém um objeto JSON válido.");
+  }
+
+  const version = (conteudo as { version?: unknown }).version;
+  // Arquivos antigos sem versão continuam compatíveis com o formato atual.
+  if (version !== undefined && version !== 1) {
+    throw new Error("Versão do arquivo não suportada. Importe um arquivo JSON de versão 1.");
   }
 
   const candidatas = (conteudo as { unidades?: unknown }).unidades;

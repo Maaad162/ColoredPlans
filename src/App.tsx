@@ -4,7 +4,6 @@ import "./App.css";
 import { AuthLoading, AuthScreen } from "./components/Auth/AuthScreen";
 import { CentralKits } from "./components/CentralKits/CentralKits";
 import { ContaPendente } from "./components/Conta/ContaPendente";
-import { OBRA_PADRAO } from "./config/dados";
 import { GerenciarLegendas } from "./components/GerenciarLegendas/GerenciarLegendas";
 import { Legenda } from "./components/Legenda/Legenda";
 import { MapTabs } from "./components/MapTabs/MapTabs";
@@ -22,23 +21,24 @@ import {
   baixarCsvMapas,
   validarArquivoImportacao,
 } from "./services/storage";
-import type { PerfilUsuario } from "./types/planta";
+import type { Obra, PerfilUsuario } from "./types/planta";
 
-export default function App() {
+export default function App({ obra }: { obra: Obra }) {
   const { usuario, carregando, entrar, sair } = useAuth();
 
   if (carregando) return <AuthLoading />;
   if (!usuario) return <AuthScreen onEntrar={entrar} />;
 
-  return <ContaAutenticada key={usuario.uid} usuario={usuario} onSair={sair} />;
+  return <ContaAutenticada key={`${usuario.uid}:${obra.id}`} usuario={usuario} obra={obra} onSair={sair} />;
 }
 
 interface ContaAutenticadaProps {
   usuario: User;
+  obra: Obra;
   onSair: () => Promise<void>;
 }
 
-function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
+function ContaAutenticada({ usuario, obra, onSair }: ContaAutenticadaProps) {
   const perfilState = usePerfil(usuario.uid);
   if (perfilState.carregando) return <AuthLoading />;
   if (!perfilState.perfil) {
@@ -53,7 +53,8 @@ function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
   return (
     <AplicacaoMapas
       usuario={usuario}
-      key={`${usuario.uid}:${OBRA_PADRAO.id}:${perfilState.perfil.tipoConta}`}
+      key={`${usuario.uid}:${obra.id}:${perfilState.perfil.tipoConta}`}
+      obra={obra}
       perfil={perfilState.perfil}
       onSair={onSair}
     />
@@ -64,11 +65,11 @@ interface AplicacaoMapasProps extends ContaAutenticadaProps {
   perfil: PerfilUsuario;
 }
 
-function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
+function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) {
   const legendasState = useLegendas(usuario.uid);
   const planta = usePlanta(
     usuario.uid,
-    OBRA_PADRAO,
+    obra,
     legendasState.legendas,
     perfil.tipoConta === "estoque",
   );
@@ -188,7 +189,7 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
         {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
           <CentralKits
             usuarioId={usuario.uid}
-            obraId={OBRA_PADRAO.id}
+            obraId={obra.id}
             onMensagem={setMensagem}
             onAbrirMapa={(mapaId) => {
               planta.selecionarAba(mapaId);

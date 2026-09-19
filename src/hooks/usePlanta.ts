@@ -10,6 +10,7 @@ import {
 } from "../services/firestore";
 import { carregarAbaAtiva, salvarAbaAtiva } from "../services/storage";
 import { migrarObra } from "../services/migracoes";
+import { garantirMapaInicial } from "../services/inicializarMapa";
 import { db } from "../config/firebase";
 import { CURRENT_SCHEMA_VERSION } from "../config/dados";
 import type {
@@ -107,18 +108,7 @@ export function usePlanta(
             if (!criarInicial || metadata.fromCache || metadata.hasPendingWrites) return;
             if (!mapaInicialEmCriacao.current) {
               mapaInicialEmCriacao.current = true;
-              const mapaInicial = {
-                schemaVersion: CURRENT_SCHEMA_VERSION,
-                obraId: obra.id,
-                id: "mapa-principal",
-                nome: "Mapa principal",
-                userId: usuarioId,
-                tipo: "manual" as const,
-                kitUnidadeIds: [],
-                marcacoes: {},
-                criadoEm: new Date().toISOString(),
-              };
-              gravar(() => criarMapaRemoto(mapaInicial, usuarioId, obra.id).catch((erro) => {
+              gravar(() => garantirMapaInicial(db, usuarioId, obra.id).catch((erro) => {
                 mapaInicialEmCriacao.current = false;
                 throw erro;
               }));

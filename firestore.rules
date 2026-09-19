@@ -26,13 +26,14 @@ service cloud.firestore {
       return data.get('schemaVersion', 0) in [0, 1];
     }
 
-    // Compatibilidade para os Kits anteriores ao schema 1.
+    // Compatibilidade histórica: mesmo ID de OBRA_LEGADA_ID em config/dados.ts.
+    // Não deve acompanhar uma mudança da obra padrão de inicialização.
     function obraDoKit(data) {
       return data.get('obraId', 'obra-principal');
     }
 
     function nomeValido(data, limite) {
-      return data.nome is string && data.nome.size() > 0 && data.nome.size() <= limite;
+      return data.nome is string && data.nome.trim().size() > 0 && data.nome.size() <= limite;
     }
 
     function legendaValida(data, userId) {
@@ -83,6 +84,8 @@ service cloud.firestore {
     match /usuarios/{userId} {
       allow read: if eProprioUsuario(userId);
       // Provisionamento exclusivo pelo Console/Admin SDK com IAM administrativo.
+      // Inclui create/update/delete, merge, substituicao, lotes e transacoes.
+      // Nenhum setor ou claim de cliente concede escrita neste documento.
       allow write: if false;
     }
 
@@ -109,6 +112,7 @@ service cloud.firestore {
                     && (mapaSemVinculo(userId, obraId, mapaId, resource.data)
                         || request.resource.data.get('kitId', '') == resource.data.kitId);
       allow delete: if perfilPermitido(userId) && resource.data.userId == userId
+                    && schemaConhecido(resource.data)
                     && mapaSemVinculo(userId, obraId, mapaId, resource.data);
     }
 
@@ -118,7 +122,8 @@ service cloud.firestore {
       allow update: if perfilPermitido(userId) && resource.data.userId == userId
                     && schemaConhecido(resource.data)
                     && legendaValida(request.resource.data, userId);
-      allow delete: if perfilPermitido(userId) && resource.data.userId == userId;
+      allow delete: if perfilPermitido(userId) && resource.data.userId == userId
+                    && schemaConhecido(resource.data);
     }
 
     match /usuarios/{userId}/kits/{kitId} {
@@ -131,6 +136,7 @@ service cloud.firestore {
                     && (resource.data.get('mapaId', '') == ''
                         || request.resource.data.mapaId == resource.data.mapaId);
       allow delete: if perfilEstoque(userId) && resource.data.userId == userId
+                    && schemaConhecido(resource.data)
                     && !existsAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraDoKit(resource.data))/mapas/$(resource.data.mapaId));
     }
 

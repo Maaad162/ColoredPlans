@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { OBRA_PADRAO } from "./config/dados";
 import "./styles/index.css";
 
 const rootElement = document.getElementById("root");
@@ -16,7 +17,7 @@ async function iniciarAplicacao() {
 
     root.render(
       <StrictMode>
-        <App />
+        <App obra={OBRA_PADRAO} />
       </StrictMode>,
     );
   } catch (erro) {
