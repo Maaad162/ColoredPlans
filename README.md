@@ -1,5 +1,7 @@
 # ColoredPlans
 
+Versão atual: **1.4.0 — Confiabilidade operacional**.
+
 ## Objetivo e escopo
 
 > Olhar a planta e entender imediatamente o que foi feito, o que falta e o que é necessário para continuar.
