@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Bloco as BlocoType,
   Marcacoes,
@@ -42,6 +42,11 @@ export function Planta({
   const viewportRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState<PanState | null>(null);
   const unidadesDoKit = useMemo(() => new Set(kitUnidadeIds), [kitUnidadeIds]);
+
+  useEffect(() => {
+    if (selecionadaId) viewportRef.current?.querySelector(".unidade--selecionada")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selecionadaId]);
 
   function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
     event.preventDefault();

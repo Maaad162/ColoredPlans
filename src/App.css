@@ -305,8 +305,29 @@
 }
 
 .map-tab-item .map-tab {
-  padding-right: 29px;
+  padding-right: 58px;
 }
+
+.map-tab__rename {
+  position: absolute;
+  right: 30px;
+  width: 24px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #59685f;
+}
+
+.map-tab__rename:hover { background: #dcebe2; }
+.busca-unidade { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+.busca-unidade label { font-size: 12px; font-weight: 600; }
+.busca-unidade input { width: 180px; max-width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; }
+.busca-unidade__resultados { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.action-menu { flex-wrap: wrap; }
+.legenda__nome { min-width: 0; overflow-wrap: anywhere; }
 
 .map-tab {
   flex: 0 0 auto;
@@ -520,7 +541,7 @@
 
 .toolbar {
   display: grid;
-  grid-template-columns: auto minmax(300px, 1fr) auto;
+  grid-template-columns: auto minmax(300px, 1fr) minmax(220px, 1fr);
   align-items: end;
   gap: 20px;
   padding: 13px 15px;
@@ -541,7 +562,7 @@
 }
 
 .toolbar__filtros { gap: 9px; }
-.toolbar__acoes { gap: 10px; justify-content: flex-end; }
+.toolbar__acoes { gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 .action-menu { gap: 7px; }
 .toolbar__pincel { gap: 8px; align-self: center; justify-content: center; }
 .toolbar__label { gap: 6px; color: #57665e; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -940,9 +961,10 @@
 @media (max-width: 680px) {
   .app-header { align-items: flex-start; padding: 14px 17px; }
   .header-meta { display: flex; }
-  .header-meta__live,
   .header-meta__divider,
-  .header-meta > span:not(.header-user) { display: none; }
+  .header-meta > span:not(.header-user):not(.header-meta__live) { display: none; }
+  .header-meta { flex-wrap: wrap; min-width: 0; }
+  .header-meta__live { white-space: normal; font-size: 10px; }
   .header-user { max-width: 120px; }
   .app-main { padding: 12px 10px 24px; }
   .map-tabs-shell { align-items: flex-start; flex-direction: column; gap: 7px; padding: 10px; }
@@ -955,8 +977,7 @@
   .select-field__control { width: 100%; }
   .select-field select { width: 100%; min-width: 0; }
   .toolbar__acoes { align-items: center; flex-wrap: wrap; }
-  .action-menu .button span { display: none; }
-  .action-menu .button { width: 36px; padding: 0; }
+  .action-menu .button { padding: 0 8px; }
   .map-heading { align-items: flex-end; }
   .map-hint { max-width: 160px; text-align: right; }
   .sidebar { grid-template-columns: 1fr; }

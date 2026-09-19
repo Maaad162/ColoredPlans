@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import { AuthLoading, AuthScreen } from "./components/Auth/AuthScreen";
 import { CentralKits } from "./components/CentralKits/CentralKits";
-import { ConfigurarConta } from "./components/Conta/ConfigurarConta";
+import { ContaPendente } from "./components/Conta/ContaPendente";
 import { GerenciarLegendas } from "./components/GerenciarLegendas/GerenciarLegendas";
 import { Legenda } from "./components/Legenda/Legenda";
 import { MapTabs } from "./components/MapTabs/MapTabs";
 import { PainelUnidade } from "./components/PainelUnidade/PainelUnidade";
 import { Planta } from "./components/Planta/Planta";
 import { Toolbar } from "./components/Toolbar/Toolbar";
+import { BuscaUnidade } from "./components/BuscaUnidade/BuscaUnidade";
 import { TOTAL_UNIDADES } from "./data/planta";
 import { useAuth } from "./hooks/useAuth";
 import { useLegendas } from "./hooks/useLegendas";
@@ -17,33 +18,34 @@ import { usePerfil } from "./hooks/usePerfil";
 import { usePlanta } from "./hooks/usePlanta";
 import {
   baixarMarcacoes,
+  baixarCsvMapas,
   validarArquivoImportacao,
 } from "./services/storage";
-import type { PerfilUsuario } from "./types/planta";
+import type { Obra, PerfilUsuario } from "./types/planta";
 
-export default function App() {
+export default function App({ obra }: { obra: Obra }) {
   const { usuario, carregando, entrar, sair } = useAuth();
 
   if (carregando) return <AuthLoading />;
   if (!usuario) return <AuthScreen onEntrar={entrar} />;
 
-  return <ContaAutenticada key={usuario.uid} usuario={usuario} onSair={sair} />;
+  return <ContaAutenticada key={`${usuario.uid}:${obra.id}`} usuario={usuario} obra={obra} onSair={sair} />;
 }
 
 interface ContaAutenticadaProps {
   usuario: User;
+  obra: Obra;
   onSair: () => Promise<void>;
 }
 
-function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
-  const perfilState = usePerfil(usuario.uid, usuario.email ?? "");
+function ContaAutenticada({ usuario, obra, onSair }: ContaAutenticadaProps) {
+  const perfilState = usePerfil(usuario.uid);
   if (perfilState.carregando) return <AuthLoading />;
   if (!perfilState.perfil) {
     return (
-      <ConfigurarConta
+      <ContaPendente
         email={usuario.email ?? "Usuário autenticado"}
         erro={perfilState.erro}
-        onConfigurar={perfilState.configurar}
         onSair={onSair}
       />
     );
@@ -51,6 +53,8 @@ function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
   return (
     <AplicacaoMapas
       usuario={usuario}
+      key={`${usuario.uid}:${obra.id}:${perfilState.perfil.tipoConta}`}
+      obra={obra}
       perfil={perfilState.perfil}
       onSair={onSair}
     />
@@ -61,10 +65,11 @@ interface AplicacaoMapasProps extends ContaAutenticadaProps {
   perfil: PerfilUsuario;
 }
 
-function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
+function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) {
   const legendasState = useLegendas(usuario.uid);
   const planta = usePlanta(
     usuario.uid,
+    obra,
     legendasState.legendas,
     perfil.tipoConta === "estoque",
   );
@@ -78,7 +83,11 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
     return () => window.clearTimeout(timeout);
   }, [mensagem]);
 
-  if (legendasState.carregando || !planta.abaAtual) return <AuthLoading />;
+  if (legendasState.carregando || !planta.abaAtual) return <>
+    <AuthLoading />
+    <p role="status">{planta.estadoSalvamento}</p>
+    {planta.erroSincronizacao && <p role="alert">{planta.erroSincronizacao}</p>}
+  </>;
 
   async function importar(arquivo: File) {
     try {
@@ -94,7 +103,7 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
       );
       if (!confirmado) return;
       planta.substituirMarcacoes(novasMarcacoes);
-      setMensagem("Marcações importadas com sucesso.");
+      setMensagem("Importação enviada para sincronização.");
     } catch (erro) {
       const detalhe = erro instanceof Error ? erro.message : "Arquivo inválido.";
       setMensagem(`Não foi possível importar: ${detalhe}`);
@@ -107,7 +116,7 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
     );
     if (!confirmado) return;
     planta.limparTudo();
-    setMensagem(`Marcações de “${planta.abaAtual.nome}” removidas.`);
+    setMensagem("Remoção enviada para sincronização.");
   }
 
   return (
@@ -126,16 +135,13 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
         </div>
         <div className="header-meta">
           <span
+            role="status"
             className={`header-meta__live${
               planta.erroSincronizacao ? " header-meta__live--erro" : ""
             }`}
           >
             <i />
-            {planta.erroSincronizacao
-              ? "Sem sincronização"
-              : planta.sincronizando
-                ? "Sincronizando…"
-                : "Sincronizado"}
+            {planta.estadoSalvamento}
           </span>
           <span className="header-meta__divider" />
           <span className={`account-badge account-badge--${perfil.tipoConta}`}>
@@ -183,6 +189,7 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
         {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
           <CentralKits
             usuarioId={usuario.uid}
+            obraId={obra.id}
             onMensagem={setMensagem}
             onAbrirMapa={(mapaId) => {
               planta.selecionarAba(mapaId);
@@ -196,16 +203,18 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
           abas={planta.abas}
           abaAtivaId={planta.abaAtual.id}
           onSelecionar={planta.selecionarAba}
+          onRenomear={planta.renomearAba}
           onExcluir={(id, nome) => {
-            if (planta.excluirAba(id)) setMensagem(`Aba “${nome}” apagada.`);
+            if (planta.excluirAba(id)) setMensagem(`Exclusão de “${nome}” enviada para sincronização.`);
           }}
           onCriar={(nome) => {
             const criada = planta.criarAba(nome);
-            if (criada) setMensagem(`Aba “${nome.trim()}” criada.`);
+            if (criada) setMensagem(`Criação de “${nome.trim()}” enviada para sincronização.`);
             return criada;
           }}
         />
 
+        <BuscaUnidade unidades={planta.unidades} onSelecionar={planta.localizarUnidade} />
         <Toolbar
           blocos={planta.blocos}
           legendas={planta.statuses}
@@ -218,6 +227,7 @@ function AplicacaoMapas({ usuario, perfil, onSair }: AplicacaoMapasProps) {
           onStatusFiltro={planta.setStatusFiltro}
           onStatusPincel={planta.setStatusPincel}
           onZoom={setZoom}
+          onExportarCsv={() => baixarCsvMapas(planta.abas, planta.unidades, planta.statuses)}
           onExportar={() => {
             baixarMarcacoes(
               planta.unidades,

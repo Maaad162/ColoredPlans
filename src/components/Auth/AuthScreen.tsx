@@ -55,7 +55,7 @@ export function AuthScreen({ onEntrar }: AuthScreenProps) {
         <div className="auth-card__intro">
           <p className="eyebrow">Acesso seguro</p>
           <h2 id="login-titulo">Entre na sua conta</h2>
-          <p>Use o usuário cadastrado no Firebase para acessar os mapas compartilhados.</p>
+          <p>Entre com a conta fornecida pelo responsável pela obra.</p>
         </div>
 
         <form onSubmit={handleSubmit}>

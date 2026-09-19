@@ -1,4 +1,4 @@
-import type { LegendaUsuario, StatusConfig, StatusId } from "../types/planta";
+import type { StatusConfig, StatusId } from "../types/planta";
 
 export const STATUS_SEM_MARCACAO = {
   id: "sem-marcacao" as const,
@@ -74,15 +74,4 @@ export function getStatus(
       simbolo: "?",
     }
   );
-}
-
-export function legendaPadraoParaUsuario(
-  status: StatusConfig,
-  usuarioId: string,
-): LegendaUsuario {
-  return {
-    ...status,
-    userId: usuarioId,
-    criadoEm: new Date().toISOString(),
-  };
 }

@@ -1,6 +1,8 @@
+import { OBRA_LEGADA_ID } from "../config/dados.ts";
 import type {
   ArquivoMarcacoes,
   Marcacoes,
+  MapaServico,
   StatusConfig,
   StatusId,
   Unidade,
@@ -8,17 +10,46 @@ import type {
 
 const ABA_ATIVA_STORAGE_PREFIX = "lm-colored-plans:aba-ativa:v3";
 
-export function carregarAbaAtiva(usuarioId: string): string | null {
+export function criarCsvMapas(mapas: MapaServico[], unidades: Unidade[], legendas: StatusConfig[]) {
+  const nomes = new Map(legendas.map((legenda) => [legenda.id, legenda.nome]));
+  const campo = (valor: string) => {
+    // Evita que nomes fornecidos pelo usuário sejam executados como fórmulas.
+    const seguro = /^[\s]*[=+@-]/.test(valor) ? `'${valor}` : valor;
+    return `"${seguro.replace(/"/g, '""')}"`;
+  };
+  const linhas = [["Mapa", "Bloco", "Número da unidade", "Status"]];
+  for (const mapa of mapas) {
+    for (const unidade of unidades) {
+      const status = mapa.marcacoes[unidade.id];
+      linhas.push([mapa.nome, unidade.bloco, unidade.numero,
+        status ? nomes.get(status) ?? status : "Sem marcação"]);
+    }
+  }
+  return "\uFEFF" + linhas.map((linha) => linha.map(campo).join(";")).join("\r\n") + "\r\n";
+}
+
+export function baixarCsvMapas(mapas: MapaServico[], unidades: Unidade[], legendas: StatusConfig[]) {
+  const blob = new Blob([criarCsvMapas(mapas, unidades, legendas)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `todos-os-mapas-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function carregarAbaAtiva(usuarioId: string, obraId: string): string | null {
   try {
-    return localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`);
+    return localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}:${obraId}`)
+      ?? (obraId === OBRA_LEGADA_ID ? localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`) : null);
   } catch {
     return null;
   }
 }
 
-export function salvarAbaAtiva(usuarioId: string, mapaId: string) {
+export function salvarAbaAtiva(usuarioId: string, obraId: string, mapaId: string) {
   try {
-    localStorage.setItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`, mapaId);
+    localStorage.setItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}:${obraId}`, mapaId);
   } catch {
     // A preferência local é opcional; os mapas continuam no Firestore.
   }
@@ -73,6 +104,12 @@ export function validarArquivoImportacao(
 ): Marcacoes {
   if (!conteudo || typeof conteudo !== "object") {
     throw new Error("O arquivo não contém um objeto JSON válido.");
+  }
+
+  const version = (conteudo as { version?: unknown }).version;
+  // Arquivos antigos sem versão continuam compatíveis com o formato atual.
+  if (version !== undefined && version !== 1) {
+    throw new Error("Versão do arquivo não suportada. Importe um arquivo JSON de versão 1.");
   }
 
   const candidatas = (conteudo as { unidades?: unknown }).unidades;

@@ -1,6 +1,5 @@
 import {
   Timestamp,
-  collection,
   deleteDoc,
   doc,
   onSnapshot,
@@ -12,12 +11,9 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { corTextoParaFundo, simboloDaLegenda } from "../config/statuses";
-import { db } from "../config/firebase";
+import { CURRENT_SCHEMA_VERSION, lerSchemaVersion } from "../config/dados";
+import { legendasCollection } from "./caminhos";
 import type { LegendaUsuario } from "../types/planta";
-
-function legendasCollection(usuarioId: string) {
-  return collection(db, "usuarios", usuarioId, "legendas");
-}
 
 export function observarLegendas(
   usuarioId: string,
@@ -27,33 +23,38 @@ export function observarLegendas(
   return onSnapshot(
     query(legendasCollection(usuarioId), where("userId", "==", usuarioId)),
     (snapshot) => {
-      aoAtualizar(
-        snapshot.docs
-          .map((documento) => {
-            const data = documento.data();
-            const nome = typeof data.nome === "string" ? data.nome.trim() : "";
-            const cor =
-              typeof data.cor === "string" && /^#[0-9a-f]{6}$/i.test(data.cor)
-                ? data.cor
-                : "#8b9690";
-            return {
-              id: documento.id,
-              userId: usuarioId,
-              nome: nome || "Legenda sem nome",
-              cor,
-              corTexto: corTextoParaFundo(cor),
-              simbolo:
-                typeof data.simbolo === "string" && data.simbolo
-                  ? data.simbolo.slice(0, 2)
-                  : simboloDaLegenda(nome),
-              criadoEm:
-                data.criadoEm instanceof Timestamp
-                  ? data.criadoEm.toDate().toISOString()
-                  : new Date().toISOString(),
-            } satisfies LegendaUsuario;
-          })
-          .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)),
-      );
+      try {
+        aoAtualizar(
+          snapshot.docs
+            .map((documento) => {
+              const data = documento.data();
+              const nome = typeof data.nome === "string" ? data.nome.trim() : "";
+              const cor =
+                typeof data.cor === "string" && /^#[0-9a-f]{6}$/i.test(data.cor)
+                  ? data.cor
+                  : "#8b9690";
+              return {
+                id: documento.id,
+                schemaVersion: lerSchemaVersion(data.schemaVersion),
+                userId: usuarioId,
+                nome: nome || "Legenda sem nome",
+                cor,
+                corTexto: corTextoParaFundo(cor),
+                simbolo:
+                  typeof data.simbolo === "string" && data.simbolo
+                    ? data.simbolo.slice(0, 2)
+                    : simboloDaLegenda(nome),
+                criadoEm:
+                  data.criadoEm instanceof Timestamp
+                    ? data.criadoEm.toDate().toISOString()
+                    : new Date().toISOString(),
+              } satisfies LegendaUsuario;
+            })
+            .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)),
+        );
+      } catch (erro) {
+        aoFalhar(erro instanceof Error ? erro : new Error(String(erro)));
+      }
     },
     aoFalhar,
   );
@@ -66,6 +67,7 @@ export function criarLegendaRemota(
 ) {
   const referencia = doc(legendasCollection(usuarioId));
   return setDoc(referencia, {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     userId: usuarioId,
     nome: nome.trim().slice(0, 48),
     cor,
@@ -83,6 +85,7 @@ export function editarLegendaRemota(
   cor: string,
 ) {
   return updateDoc(doc(legendasCollection(usuarioId), legendaId), {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     nome: nome.trim().slice(0, 48),
     cor,
     corTexto: corTextoParaFundo(cor),
