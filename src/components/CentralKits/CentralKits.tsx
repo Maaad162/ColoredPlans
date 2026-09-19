@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../../data/planta";
-import { useKits } from "../../hooks/useKits";
+import type { useKits } from "../../hooks/useKits";
+import { traduzirErro } from "../../services/erros";
 import { calcularConsumoKit, type DadosKit } from "../../services/kits";
 import type { Kit, MaterialKit } from "../../types/planta";
 
 interface CentralKitsProps {
-  usuarioId: string;
-  obraId: string;
+  kitsState: ReturnType<typeof useKits>;
   onMensagem: (mensagem: string) => void;
   onAbrirMapa: (mapaId: string) => void;
 }
@@ -29,8 +29,7 @@ function formatarQuantidade(valor: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
 }
 
-export function CentralKits({ usuarioId, obraId, onMensagem, onAbrirMapa }: CentralKitsProps) {
-  const kitsState = useKits(usuarioId, obraId, true);
+export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsProps) {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Kit | "novo" | null>(null);
   const [vinculando, setVinculando] = useState<Kit | null>(null);
@@ -54,7 +53,7 @@ export function CentralKits({ usuarioId, obraId, onMensagem, onAbrirMapa }: Cent
       await kitsState.excluir(kit.id);
       onMensagem(`Kit “${kit.nome}” e mapa associado excluídos.`);
     } catch (falha) {
-      onMensagem(falha instanceof Error ? falha.message : "Não foi possível excluir o Kit.");
+      onMensagem(traduzirErro(falha).mensagem);
     }
   }
 
@@ -69,7 +68,6 @@ export function CentralKits({ usuarioId, obraId, onMensagem, onAbrirMapa }: Cent
         <button className="button button--primary" type="button" onClick={() => setEditor("novo")}>+ Criar Kit</button>
       </div>
 
-      {kitsState.erro && <div className="sync-warning" role="alert">{kitsState.erro}</div>}
       {kitsState.carregando ? (
         <div className="section-loading">Carregando Kits…</div>
       ) : kitsState.kits.length === 0 ? (
@@ -113,14 +111,10 @@ export function CentralKits({ usuarioId, obraId, onMensagem, onAbrirMapa }: Cent
           kit={editor === "novo" ? null : editor}
           onFechar={() => setEditor(null)}
           onSalvar={async (dados) => {
-            try {
-              const id = await kitsState.salvar(dados);
-              setSelecionadoId(id);
-              setEditor(null);
-              onMensagem(`Kit “${dados.nome.trim()}” salvo.`);
-            } catch (falha) {
-              throw new Error(falha instanceof Error ? falha.message : "Não foi possível salvar o Kit.");
-            }
+            const id = await kitsState.salvar(dados);
+            setSelecionadoId(id);
+            setEditor(null);
+            onMensagem(`Kit “${dados.nome.trim()}” salvo.`);
           }}
         />
       )}
@@ -131,13 +125,9 @@ export function CentralKits({ usuarioId, obraId, onMensagem, onAbrirMapa }: Cent
           kit={vinculando}
           onFechar={() => setVinculando(null)}
           onSalvar={async (selecionadas) => {
-            try {
-              await kitsState.vincular(vinculando.id, selecionadas);
-              setVinculando(null);
-              onMensagem(`${selecionadas.length} unidade(s) vinculada(s) ao Kit “${vinculando.nome}”.`);
-            } catch (falha) {
-              throw new Error(falha instanceof Error ? falha.message : "Não foi possível atualizar as unidades do Kit.");
-            }
+            await kitsState.vincular(vinculando.id, selecionadas);
+            setVinculando(null);
+            onMensagem(`${selecionadas.length} unidade(s) vinculada(s) ao Kit “${vinculando.nome}”.`);
           }}
         />
       )}
@@ -250,7 +240,7 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
         })),
       });
     } catch (falha) {
-      setErro(falha instanceof Error ? falha.message : "Não foi possível salvar o Kit.");
+      setErro(traduzirErro(falha).mensagem);
     } finally {
       setSalvando(false);
     }
@@ -319,7 +309,7 @@ function KitUnidadesModal({ kit, onFechar, onSalvar }: KitUnidadesModalProps) {
     try {
       await onSalvar([...selecionadas]);
     } catch (falha) {
-      setErro(falha instanceof Error ? falha.message : "Não foi possível salvar as unidades.");
+      setErro(traduzirErro(falha).mensagem);
     } finally {
       setSalvando(false);
     }

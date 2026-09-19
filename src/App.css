@@ -1192,3 +1192,8 @@
   .units-selection-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .unit-selector fieldset > div { grid-template-columns: repeat(4, 1fr); }
 }
+.history-panel { max-height: 85vh; overflow-y: auto; }
+.history-list { padding-left: 24px; }
+.history-list > li { padding: 12px 0; border-bottom: 1px solid #ddd; }
+.history-list p { margin: 4px 0; }
+.history-list summary { cursor: pointer; }

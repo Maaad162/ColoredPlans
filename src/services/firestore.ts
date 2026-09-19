@@ -1,28 +1,28 @@
 import {
   Timestamp,
-  deleteDoc,
-  deleteField,
   onSnapshot,
   query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
   where,
   type Unsubscribe,
   type SnapshotMetadata,
 } from "firebase/firestore";
-import { CURRENT_SCHEMA_VERSION, lerSchemaVersion } from "../config/dados";
-import { mapaDocument, mapasCollection } from "./caminhos";
+import { lerSchemaVersion } from "../config/dados";
+import { db } from "../config/firebase";
+import { gravarComHistorico, validarMarcacoes } from "./historico";
+import { ErroOperacional } from "./erros";
+import { mapasCollection } from "./caminhos";
 import { UNIDADE_BY_ID } from "../data/planta";
 import type { MapaServico, Marcacoes, StatusId } from "../types/planta";
 
 function normalizarMarcacoes(valor: unknown): Marcacoes {
-  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return {};
-  return Object.fromEntries(
-    Object.entries(valor).filter(
-      ([, status]) => typeof status === "string" && status.length <= 128,
-    ),
-  ) as Marcacoes;
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) throw new ErroOperacional("validacao", "Este mapa contém marcações inválidas. Solicite revisão ao responsável.");
+  const marcacoes: Marcacoes = {};
+  for (const [id, status] of Object.entries(valor)) {
+    if (status !== null && typeof status !== "string") throw new ErroOperacional("validacao", "Este mapa contém um estado inválido. Solicite revisão ao responsável.");
+    marcacoes[id] = status;
+  }
+  validarMarcacoes(marcacoes);
+  return marcacoes;
 }
 
 export function observarMapas(
@@ -64,7 +64,7 @@ export function observarMapas(
                 : [],
               nome:
                 typeof data.nome === "string" && data.nome.trim()
-                  ? data.nome.trim().slice(0, kitId ? 80 : 48)
+                  ? data.nome
                   : "Mapa sem nome",
               marcacoes: normalizarMarcacoes(data.marcacoes),
               criadoEm,
@@ -81,66 +81,32 @@ export function observarMapas(
 }
 
 export function criarMapaRemoto(mapa: MapaServico, usuarioId: string, obraId: string) {
-  if (mapa.userId !== usuarioId || mapa.obraId !== obraId) {
-    return Promise.reject(new Error("O proprietário do mapa é inválido."));
-  }
-
-  return setDoc(mapaDocument(usuarioId, obraId, mapa.id), {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-    obraId,
-    userId: usuarioId,
-    tipo: "manual",
-    kitUnidadeIds: [],
-    nome: mapa.nome,
-    marcacoes: {},
-    criadoEm: serverTimestamp(),
-    atualizadoEm: serverTimestamp(),
-    criadoPor: usuarioId,
-    atualizadoPor: usuarioId,
-  });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "criar", mapa });
 }
 
-export function excluirMapaRemoto(id: string, usuarioId: string, obraId: string) {
-  return deleteDoc(mapaDocument(usuarioId, obraId, id));
+export function excluirMapaRemoto(mapa: MapaServico, usuarioId: string, obraId: string) {
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "excluir", mapa });
 }
 
-export function renomearMapaRemoto(id: string, nome: string, usuarioId: string, obraId: string) {
-  return updateDoc(mapaDocument(usuarioId, obraId, id), {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-    obraId,
-    nome,
-    atualizadoEm: serverTimestamp(),
-    atualizadoPor: usuarioId,
-  });
+export function renomearMapaRemoto(mapa: MapaServico, nome: string, usuarioId: string, obraId: string) {
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "renomear", mapa, nome });
 }
 
 export function atualizarStatusRemoto(
-  mapaId: string,
+  mapa: MapaServico,
   unidadeId: string,
   status: StatusId | null,
   usuarioId: string,
   obraId: string,
 ) {
-  return updateDoc(mapaDocument(usuarioId, obraId, mapaId), {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-    obraId,
-    [`marcacoes.${unidadeId}`]: status ?? deleteField(),
-    atualizadoEm: serverTimestamp(),
-    atualizadoPor: usuarioId,
-  });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "unidade", mapa, unidadeId, status });
 }
 
 export function substituirMarcacoesRemotas(
-  mapaId: string,
+  mapa: MapaServico,
   marcacoes: Marcacoes,
   usuarioId: string,
   obraId: string,
 ) {
-  return updateDoc(mapaDocument(usuarioId, obraId, mapaId), {
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-    obraId,
-    marcacoes,
-    atualizadoEm: serverTimestamp(),
-    atualizadoPor: usuarioId,
-  });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "marcacoes", mapa, marcacoes });
 }

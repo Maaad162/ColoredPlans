@@ -10,15 +10,19 @@ sem acrescentar módulos administrativos ou redesenhar a experiência.
 
 O ColoredPlans existe para permitir que o usuário olhe a planta e entenda
 imediatamente o que foi feito, o que falta e o que é necessário para continuar.
-Esta entrega se limita à **Fase 1 — Fundação**: documentação, usuários e permissões,
-obra, preparação para várias obras, versionamento e consistência dos dados.
+A **Fase 1 — Fundação** consolidou usuários, permissões, obras e schema.
+A **Fase 2 — Confiabilidade operacional** acrescenta validação automatizada,
+tratamento de erros, sincronização explícita e histórico operacional da planta.
+Não inclui funcionalidades da Fase 3.
 
 ## Tecnologias
 
 React, TypeScript estrito, Vite, Firebase Authentication (e-mail/senha), Cloud
 Firestore e Firebase Hosting. A planta atual é um SVG com 100 unidades em sete
 blocos. Os testes usam o runner do Node e `@firebase/rules-unit-testing` com o
-emulador Firestore. Não há servidor próprio nem painel administrativo.
+emulador Firestore. Playwright verifica os fluxos no navegador com emuladores
+Authentication/Firestore; ESLint verifica TypeScript e React Hooks. Não há
+servidor próprio nem painel administrativo.
 
 React DOM monta a aplicação; `@vitejs/plugin-react` integra React ao Vite. Estilos
 são CSS e a geometria é definida em TypeScript, sem biblioteca externa de mapas.
@@ -50,9 +54,14 @@ Frontend React (App + componentes)
 - `src/components/`: planta, ferramentas, abas, detalhes, legendas e Central de Kits.
 - `src/data/planta.ts`: unidades e geometria da planta atual.
 - `src/services/storage.ts`: preferência da aba ativa e importação/exportação.
+- `src/services/erros.ts`, `sincronizacao.ts`: classificação segura de erros e acompanhamento de leituras/gravações.
+- `src/services/historico.ts`: gravação atômica do mapa e do evento operacional.
+- `src/components/Historico.tsx`: consulta por obra, mapa ou unidade, paginada em 20 eventos.
+- `tests/browser/`: fluxos reais no navegador; `.github/workflows/check.yml`: validação sem deploy.
 
 O inventário, as evidências e as pendências estão na
-[auditoria da arquitetura atual](docs/auditoria-arquitetura.md).
+[auditoria da Fase 1](docs/auditoria-arquitetura.md). As decisões e diferenças
+da Fase 2 estão em [confiabilidade operacional](docs/confiabilidade.md).
 As decisões e o registro histórico estão em [docs/fundacao.md](docs/fundacao.md).
 
 ## Contas e permissões
@@ -212,6 +221,9 @@ usuarios/{uid}/obras/{obraId}
   mapas/{mapaId}
     userId, obraId, schemaVersion, nome, tipo, marcacoes, criadoEm
     kitId?, kitUnidadeIds[], atualizadoEm, ...
+  historico/{eventoId}
+    schemaVersion, userId, obraId, mapaId, mapaNome, acao
+    unidadeIds[], antes, depois, nomeAnterior, nomeAtual, criadoEm
 
 usuarios/{uid}/kits/{kitId}
   userId, obraId, schemaVersion, nome, mapaId
@@ -231,8 +243,8 @@ sem esse campo. `null`, IDs vazios e valores inválidos geram erro; não equival
 usuário e à mesma obra. Não é permitido transferir um Kit de obra por edição.
 
 Legendas são configurações do usuário, comuns às suas obras. Não são permissões.
-As consultas atuais não exigem índice composto adicional; não há arquivo de
-índices configurado em `firebase.json`.
+As consultas do histórico usam índices compostos declarados em
+`firestore.indexes.json` e referenciados por `firebase.json`.
 
 `marcacoes` associa ID da unidade ao ID da legenda. A borracha remove a chave;
 valores `null` antigos também são interpretados como ausência de marcação.
@@ -267,7 +279,7 @@ Recursos preservados:
   mapas carregados. O ID e as marcações não mudam.
 - Resumo do mapa ativo com total, porcentagem marcada e quantidade por legenda.
 - Filtros, zoom, pintura rápida, borracha e detalhes da unidade.
-- Indicador existente de salvamento, pendência de sincronização e erros.
+- Indicador global de sincronização de mapas, legendas, Kits e histórico aberto.
 - Importação e exportação JSON do mapa ativo, mantendo o formato `version: 1`.
   A importação rejeita versões explícitas diferentes de 1 e mantém compatibilidade
   com arquivos antigos sem o campo `version`.
@@ -291,7 +303,7 @@ O consumo é calculado na leitura, não persistido como saldo. O JSON e o CSV
 exportam marcações, não os materiais ou as associações de unidades dos Kits;
 portanto não são backups completos da conta.
 
-## Cache e sincronização
+## Confiabilidade e sincronização
 
 Marcações manuais continuam funcionando com cache offline; transações de Kits,
 migrações e criação do primeiro mapa precisam de conexão. Não foi criado um novo
@@ -304,11 +316,54 @@ como fallback apenas para `OBRA_LEGADA_ID`, independentemente da obra inicial.
 Sair encerra a sessão, mas não há
 limpeza explícita do cache Firestore pela aplicação.
 
-“Salvo”, “Salvando”, pendência e erro refletem o estado dos mapas observado por
-`usePlanta`; não representam um monitor global de todas as gravações da conta.
+O indicador agrega as fontes da sessão/obra: mapas, legendas, Kits para Estoque
+e histórico enquanto aberto. Usa `fromCache`, `hasPendingWrites`, eventos de
+conectividade e promises reais das operações, sem timers para simular sucesso.
+
+| Estado | Significado |
+| --- | --- |
+| Sincronizado | Fontes ativas confirmadas pelo servidor, sem gravações ou erros pendentes. |
+| Salvando… | Há operação ou confirmação pendente. |
+| Offline · dados locais | Navegador sem conexão ou alguma fonte ainda vem do cache. |
+| Erro ao sincronizar | Falha exige atenção; tem prioridade sobre os demais estados. |
+
+Snapshots novos não apagam falhas de gravação. O aviso oferece nova tentativa;
+não é preciso recarregar a página. Erros são classificados e traduzidos; logs
+da aplicação registram contexto/categoria, sem copiar payloads ou credenciais.
+Ao rejeitar uma gravação, o SDK desfaz o estado otimista e a falha continua visível.
+Repetir uma ação de mapa reaplica a intenção sobre o mapa atualmente observado;
+confira o mapa/unidade antes de tentar novamente após alterações concorrentes.
+
+Pintura e histórico vão no mesmo lote. Unidades diferentes podem mudar em
+paralelo; se outra sessão já mudou o estado anterior da mesma unidade, as regras
+rejeitam o lote inteiro. Importar/limpar compara o conjunto de marcações. Não há
+merge automático que invente um estado da obra nem botão de desfazer, pois uma
+reversão poderia sobrescrever trabalho posterior de outra sessão.
+
 Não há garantia de primeiro acesso offline: a preparação inicial depende do
 servidor. A criação de Kit usa lote, enquanto suas edições/exclusão e a migração
 usam transações.
+
+## Histórico operacional
+
+Registra alterações de estado (inclusive pintura em mapas de Kits), importação
+e limpeza agrupadas, criação manual, renomeação e exclusão de mapas manuais.
+Cada evento contém UID, obra, mapa, unidades afetadas, antes/depois e horário do
+servidor. Ações sem mudança não criam eventos. A confirmação inclui mapa e evento
+atomicamente; falhar um impede ambos. Retransmissão do lote pelo SDK conserva
+o mesmo evento. Selecionar unidades e abrir modais não grava histórico.
+
+A consulta fica em um modal acessível pela obra, mapa ou unidade, com ordem
+decrescente, limite de 20 e paginação por cursor. Dados do cache são identificados.
+IDs de legendas são preservados; os nomes exibidos usam as legendas atuais,
+com fallback para legendas removidas. Eventos de mapas excluídos permanecem.
+
+Eventos são imutáveis para clientes, isolados por usuário/obra e validados pelas
+regras contra a alteração real. Isso é **histórico operacional**, não auditoria
+de segurança inviolável: caminhos de gravação anteriores continuam compatíveis
+e clientes antigos podem alterar mapas sem criar eventos. Não há retroatividade,
+registro da inicialização/migração, nem eventos de materiais/vínculos de Kits.
+Esses limites evitam reconstruir acontecimentos que não foram observados.
 
 ## Schema e migração
 
@@ -346,9 +401,8 @@ futuras são rejeitadas pelos leitores de schema e nas atualizações protegidas
 pelas regras. Exclusões de mapas, Kits e legendas também exigem versão conhecida;
 se um lado do par Kit/mapa tiver versão futura, sua exclusão atômica é negada.
 
-Erros chegam ao fluxo de sincronização, são registrados com `console.error` e
-exibidos no aviso de sincronização existente. Não há coleção de logs ou histórico
-novo. Corrija a origem com revisão administrativa e backup e reabra a aplicação;
+Erros chegam ao fluxo de sincronização, são registrados por categoria e
+exibidos no aviso. Corrija a origem com revisão administrativa e backup e use a nova tentativa;
 não apague documentos nem marque a obra como migrada para ocultar a falha.
 
 Só existe o passo `0 -> 1`. Uma mudança incompatível futura deve acrescentar um
@@ -364,12 +418,13 @@ O marcador na obra dispensa novas varreduras. Não é uma auditoria contínua: d
 legados inseridos depois dele, mudanças administrativas de setor e documentos
 novos durante a execução precisam de revisão específica. As transações conferem
 os documentos dos grupos planejados, não bloqueiam a coleção inteira. Os leitores
-normais de mapas/Kits ainda normalizam ou filtram alguns valores inválidos;
-essa tolerância é distinta da validação da migração.
+normais rejeitam marcações inválidas e materiais/unidades inválidos ou repetidos
+nos Kits, preservando os documentos para revisão em vez de descartar itens.
+O histórico é uma adição compatível com schema 1, sem migração retroativa.
 
 ## Desenvolvimento e validação
 
-Use Node.js 22.16 ou superior, npm, Firebase CLI e Java 21 para o emulador.
+Use Node.js 24, npm e Java 21 para o emulador. A Firebase CLI é dependência local.
 Os comandos abaixo são para PowerShell no Windows; em outros shells use `npm`.
 Prefira `npm.cmd ci` para instalar as versões do lockfile. `npm.cmd install`
 fica disponível quando for necessário atualizar dependências.
@@ -394,28 +449,40 @@ npm.cmd run dev
 ```
 
 Abra o endereço exibido pelo Vite (normalmente `http://localhost:5173`). O
-frontend local usa o Authentication e o Firestore do projeto em `.env.local`;
-não há chamadas a `connectAuthEmulator` ou `connectFirestoreEmulator` no frontend.
-Executar o emulador de testes não redireciona automaticamente o navegador para ele.
+frontend local usa o Authentication e o Firestore do projeto em `.env.local`.
+Para isolamento local, `VITE_USE_EMULATORS=true` conecta às portas Auth 9099 e
+Firestore 8080, somente em desenvolvimento, em localhost/127.0.0.1 e com project ID
+iniciado por `demo-`. Inicie os emuladores com
+`npx firebase emulators:start --project demo-coloredplans --only auth,firestore` e
+use esse mesmo ID nas variáveis do frontend. Contas e perfis precisam ser
+provisionados no emulador. Os testes de navegador fazem esse preparo sozinhos.
 
 | Script | Função real |
 | --- | --- |
 | `dev` | Servidor de desenvolvimento Vite. |
 | `typecheck` | `tsc -b --pretty false`, verificação TypeScript. |
-| `test` | Testes Node de storage e do planejador da migração, sem emulador. |
+| `lint` | ESLint, TypeScript e Hooks; promises e código não utilizado. |
+| `test` | Testes Node de storage, migração, validação, erros e sincronização. |
 | `test:rules` | Inicia o emulador Firestore, executa regras, migração real, proteção dos perfis e preservação de dados sequencialmente e encerra o emulador. |
 | `build` | `tsc -b` e build Vite para `dist`. |
+| `test:ui` | Auth/Firestore Emulator e Playwright; inicia Vite isolado na porta 4173. |
+| `check` | Typecheck, lint, unitários, regras/integração, navegador e build, sequencialmente. |
 | `preview` | Serve o build local; não publica no Firebase. |
 
 ```powershell
 npm.cmd run typecheck
+npm.cmd run lint
 npm.cmd test
 npm.cmd run test:rules
+npm.cmd run test:ui
 npm.cmd run build
 npm.cmd run preview
 ```
 
-Se necessário, instale a CLI com `npm.cmd install -g firebase-tools`.
+Instale o navegador de testes com `npx playwright install chromium`.
+No Windows, pode usar Edge instalado: `$env:PLAYWRIGHT_CHANNEL='msedge'`.
+Execute `npm.cmd run check` para a validação completa. Não rode suítes que
+usam os emuladores simultaneamente: elas limpam seus dados de teste.
 `test:rules` inicia e encerra o emulador e executa as suítes sequencialmente,
 sem escrever no Firestore de produção. Os testes verificam permissões, tentativas
 de promoção, acesso sem perfil, isolamento, vínculos Kit/mapa, migração real,
@@ -423,11 +490,21 @@ preservação do legado, reexecução, exportação e preferências por obra.
 Também cobrem inicialização em duas instâncias, exclusão de versões futuras e
 retomada da migração depois de corrigir dados inválidos.
 
-As quatro suítes de integração usam `projectId: "lmcoloredplans"`, chamam
+As suítes de integração usam `projectId: "demo-coloredplans"`, chamam
 `clearFirestore` no emulador e não devem compartilhar sua instância com dados de
-teste que precisem ser preservados. Não há emulador Auth, testes de componentes,
-testes ponta a ponta, script de lint ou CI configurados. A cobertura existente
-não comprova todas as validações de domínio; veja as lacunas na auditoria.
+teste que precisem ser preservados. Playwright usa login real do emulador,
+listeners e serviços reais; a indisponibilidade do Firestore é exercitada com
+`disableNetwork`/`enableNetwork` do SDK, sem simular confirmação de gravação.
+Isso não comprova primeiro carregamento sem internet nem todas as falhas físicas
+de rede/dispositivo. Consulte a matriz de cobertura em `docs/confiabilidade.md`.
+
+## Integração contínua
+
+O workflow `check.yml` roda em pull requests e pushes para `main`/`development`.
+Instala pelo lockfile (`npm ci`), Node 24, Java 21 e Chromium; executa `npm run check`.
+Falhas preservam traces do Playwright e log do emulador como artefatos.
+Não publica Hosting, regras ou índices. Tornar o check obrigatório para merge
+depende da proteção da branch no GitHub, que não é configurada pelo workflow.
 
 ## Configuração e publicação
 
@@ -436,13 +513,10 @@ provisione os perfis. Para produção, confirme também o bloqueio de cadastro p
 descrito acima e revise os setores de contas antigas.
 
 ```powershell
-firebase login
-firebase use --add
-npm.cmd run typecheck
-npm.cmd test
-npm.cmd run test:rules
-npm.cmd run build
-firebase deploy --only hosting,firestore:rules
+npx firebase login
+npx firebase use --add
+npm.cmd run check
+npx firebase deploy --only hosting,firestore:rules,firestore:indexes
 ```
 
 Selecione o projeto correspondente a `VITE_FIREBASE_PROJECT_ID`. O Hosting publica
@@ -450,7 +524,8 @@ Selecione o projeto correspondente a `VITE_FIREBASE_PROJECT_ID`. O Hosting publi
 no Authentication. Os headers configuram `no-store` para `/` e arquivos `.html`,
 e cache de um ano com `immutable` para JS/CSS (gerados com hash pelo Vite).
 Isso não remove o cache offline do Firestore.
-As novas regras e o frontend devem ser entregues juntos:
+As novas regras, índices e o frontend devem ser entregues juntos; aguarde os
+índices ficarem prontos para consultar o histórico em produção:
 clientes antigos que gravem sem versão deixam de ser compatíveis com as novas regras.
 Preserve um backup administrativo antes da atualização. Não houve deploy automático.
 
@@ -459,7 +534,7 @@ a seleção da CLI são independentes. O deploy acima não cria contas, perfis o
 legendas, não executa a migração no servidor e não bloqueia cadastro no
 Authentication. A migração é iniciada pelo cliente ao abrir os mapas.
 
-A Fase 1 não inclui gestão de equipes, histórico completo, seletor de obras,
+Esta entrega não inclui gestão de equipes, auditoria completa de servidor, seletor de obras,
 dashboards complexos, relatórios avançados, novos tipos de Kits, estoque avançado,
 novos indicadores/gráficos, notificações, módulos administrativos ou funções de ERP.
 Busca, resumo visual e exportações já existentes são preservados.

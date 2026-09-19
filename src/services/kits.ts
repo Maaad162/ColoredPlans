@@ -1,3 +1,4 @@
+import { ErroOperacional } from "./erros";
 import {
   Timestamp,
   doc,
@@ -8,11 +9,12 @@ import {
   where,
   writeBatch,
   type Unsubscribe,
+  type SnapshotMetadata,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { CURRENT_SCHEMA_VERSION, lerObraIdDoKit, lerSchemaVersion } from "../config/dados";
 import { kitsCollection, mapaDocument } from "./caminhos";
-import { UNIDADE_BY_ID } from "../data/planta";
+import { validarMateriais, validarUnidadesKit } from "./validacoes";
 import type { Kit, MaterialKit } from "../types/planta";
 
 export interface DadosKit {
@@ -25,57 +27,15 @@ function mapaIdDoKit(kitId: string) {
   return `mapa-kit-${kitId}`;
 }
 
-function unidadesValidas(valor: unknown) {
-  if (!Array.isArray(valor)) return [];
-  return [
-    ...new Set(
-      valor.filter(
-        (id): id is string =>
-          typeof id === "string" && Boolean(UNIDADE_BY_ID[id]),
-      ),
-    ),
-  ];
-}
-
-function normalizarMateriais(valor: unknown): MaterialKit[] {
-  if (!Array.isArray(valor)) return [];
-  const ids = new Set<string>();
-  return valor.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const data = item as Record<string, unknown>;
-    if (
-      typeof data.id !== "string" ||
-      ids.has(data.id) ||
-      typeof data.codigoSienge !== "string" ||
-      typeof data.descricao !== "string" ||
-      typeof data.detalhe !== "string" ||
-      typeof data.quantidadePorKit !== "number" ||
-      !Number.isFinite(data.quantidadePorKit) ||
-      data.quantidadePorKit <= 0
-    ) {
-      return [];
-    }
-    ids.add(data.id);
-    return [
-      {
-        id: data.id,
-        codigoSienge: data.codigoSienge.trim().slice(0, 32),
-        descricao: data.descricao.trim().slice(0, 100),
-        detalhe: data.detalhe.trim().slice(0, 180),
-        quantidadePorKit: data.quantidadePorKit,
-      },
-    ];
-  });
-}
-
 export function observarKits(
   usuarioId: string,
   obraId: string,
-  aoAtualizar: (kits: Kit[]) => void,
+  aoAtualizar: (kits: Kit[], metadata: SnapshotMetadata) => void,
   aoFalhar: (erro: Error) => void,
 ): Unsubscribe {
   return onSnapshot(
     query(kitsCollection(usuarioId), where("userId", "==", usuarioId)),
+    { includeMetadataChanges: true },
     (snapshot) => {
       try {
         const kits = snapshot.docs
@@ -92,8 +52,8 @@ export function observarKits(
                 typeof data.nome === "string" && data.nome.trim()
                   ? data.nome.trim().slice(0, 80)
                   : "Kit sem nome",
-              materiais: normalizarMateriais(data.materiais),
-              unidadeIds: unidadesValidas(data.unidadeIds),
+              materiais: validarMateriais(data.materiais),
+              unidadeIds: validarUnidadesKit(data.unidadeIds),
               criadoEm:
                 data.criadoEm instanceof Timestamp
                   ? data.criadoEm.toDate().toISOString()
@@ -105,7 +65,7 @@ export function observarKits(
             } satisfies Kit;
           })
           .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
-        aoAtualizar(kits);
+        aoAtualizar(kits, snapshot.metadata);
       } catch (erro) {
         aoFalhar(erro instanceof Error ? erro : new Error(String(erro)));
       }
@@ -120,31 +80,31 @@ export async function salvarKitRemoto(
   dados: DadosKit,
 ) {
   const nome = dados.nome.trim().slice(0, 80);
-  if (!nome) throw new Error("Informe um nome para o Kit e seu mapa.");
+  if (!nome) throw new ErroOperacional("validacao", "Informe um nome para o Kit e seu mapa.");
 
   if (dados.id) {
     const referenciaKit = doc(kitsCollection(usuarioId), dados.id);
     await runTransaction(db, async (transacao) => {
       const kitSnapshot = await transacao.get(referenciaKit);
-      if (!kitSnapshot.exists()) throw new Error("O Kit não existe mais.");
+      if (!kitSnapshot.exists()) throw new ErroOperacional("ausente", "O Kit não existe mais.");
       if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
-        throw new Error("O Kit pertence a outra obra.");
+        throw new ErroOperacional("validacao", "O Kit pertence a outra obra.");
       }
       lerSchemaVersion(kitSnapshot.data().schemaVersion);
       const mapaId = kitSnapshot.data().mapaId;
       if (typeof mapaId !== "string" || !mapaId) {
-        throw new Error("O Kit ainda não possui um mapa associado. Recarregue para concluir a migração.");
+        throw new ErroOperacional("validacao", "O Kit ainda não possui um mapa associado. Recarregue para concluir a migração.");
       }
       const referenciaMapa = mapaDocument(usuarioId, obraId, mapaId);
       const mapaSnapshot = await transacao.get(referenciaMapa);
       if (!mapaSnapshot.exists() || mapaSnapshot.data().kitId !== dados.id) {
-        throw new Error("O mapa associado ao Kit não foi encontrado.");
+        throw new ErroOperacional("validacao", "O mapa associado ao Kit não foi encontrado.");
       }
       transacao.update(referenciaKit, {
         schemaVersion: CURRENT_SCHEMA_VERSION,
         obraId,
         nome,
-        materiais: dados.materiais,
+        materiais: validarMateriais(dados.materiais),
         atualizadoEm: serverTimestamp(),
       });
       transacao.update(referenciaMapa, {
@@ -167,7 +127,7 @@ export async function salvarKitRemoto(
     obraId,
     mapaId,
     nome,
-    materiais: dados.materiais,
+    materiais: validarMateriais(dados.materiais),
     unidadeIds: [],
     criadoEm: serverTimestamp(),
     atualizadoEm: serverTimestamp(),
@@ -196,17 +156,17 @@ export async function excluirKitRemoto(usuarioId: string, obraId: string, kitId:
     const kitSnapshot = await transacao.get(referenciaKit);
     if (!kitSnapshot.exists()) return;
     if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
-      throw new Error("O Kit pertence a outra obra.");
+      throw new ErroOperacional("validacao", "O Kit pertence a outra obra.");
     }
     lerSchemaVersion(kitSnapshot.data().schemaVersion);
     const mapaId = kitSnapshot.data().mapaId;
     if (typeof mapaId !== "string" || !mapaId) {
-      throw new Error("Não foi possível localizar o mapa deste Kit.");
+      throw new ErroOperacional("validacao", "Não foi possível localizar o mapa deste Kit.");
     }
     const referenciaMapa = mapaDocument(usuarioId, obraId, mapaId);
     const mapaSnapshot = await transacao.get(referenciaMapa);
     if (mapaSnapshot.exists() && mapaSnapshot.data().kitId !== kitId) {
-      throw new Error("O mapa informado está associado a outro Kit.");
+      throw new ErroOperacional("validacao", "O mapa informado está associado a outro Kit.");
     }
     transacao.delete(referenciaKit);
     if (mapaSnapshot.exists()) transacao.delete(referenciaMapa);
@@ -219,23 +179,23 @@ export async function atualizarUnidadesKit(
   kitId: string,
   unidadeIds: string[],
 ) {
-  const idsValidos = unidadesValidas(unidadeIds);
+  const idsValidos = validarUnidadesKit(unidadeIds);
   const referenciaKit = doc(kitsCollection(usuarioId), kitId);
   await runTransaction(db, async (transacao) => {
     const kitSnapshot = await transacao.get(referenciaKit);
-    if (!kitSnapshot.exists()) throw new Error("O Kit não existe mais.");
+    if (!kitSnapshot.exists()) throw new ErroOperacional("ausente", "O Kit não existe mais.");
     if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
-      throw new Error("O Kit pertence a outra obra.");
+      throw new ErroOperacional("validacao", "O Kit pertence a outra obra.");
     }
     lerSchemaVersion(kitSnapshot.data().schemaVersion);
     const mapaId = kitSnapshot.data().mapaId;
     if (typeof mapaId !== "string" || !mapaId) {
-      throw new Error("O Kit não possui um mapa associado.");
+      throw new ErroOperacional("validacao", "O Kit não possui um mapa associado.");
     }
     const referenciaMapa = mapaDocument(usuarioId, obraId, mapaId);
     const mapaSnapshot = await transacao.get(referenciaMapa);
     if (!mapaSnapshot.exists() || mapaSnapshot.data().kitId !== kitId) {
-      throw new Error("O mapa associado ao Kit não foi encontrado.");
+      throw new ErroOperacional("validacao", "O mapa associado ao Kit não foi encontrado.");
     }
     transacao.update(referenciaKit, {
       schemaVersion: CURRENT_SCHEMA_VERSION,

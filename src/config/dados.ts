@@ -1,3 +1,4 @@
+import { ErroOperacional } from "../services/erros.ts";
 import type { Obra } from "../types/planta";
 
 export const CURRENT_SCHEMA_VERSION = 1 as const;
@@ -21,16 +22,16 @@ export const OBRA_PADRAO: Obra = {
 export function lerSchemaVersion(valor: unknown): SchemaVersion {
   if (valor === undefined || valor === 0) return 0;
   if (valor === CURRENT_SCHEMA_VERSION) return valor;
-  throw new Error("Versão dos dados não suportada. Atualize a aplicação ou contate o responsável.");
+  throw new ErroOperacional("validacao", "Versão dos dados não suportada. Atualize a aplicação ou contate o responsável.");
 }
 
 export function validarId(valor: string) {
-  if (!valor.trim() || valor.includes("/")) throw new Error("Identificador inválido.");
+  if (!valor.trim() || valor.includes("/")) throw new ErroOperacional("validacao", "Identificador inválido.");
   return valor;
 }
 
 export function lerObraIdDoKit(valor: unknown): string {
   if (valor === undefined) return OBRA_LEGADA_ID;
-  if (typeof valor !== "string") throw new Error("Obra inválida no Kit. Solicite revisão administrativa.");
+  if (typeof valor !== "string") throw new ErroOperacional("validacao", "Obra inválida no Kit. Solicite revisão administrativa.");
   return validarId(valor);
 }

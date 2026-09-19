@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { traduzirErro } from "../../services/erros";
 import type { LegendaUsuario } from "../../types/planta";
 
 interface GerenciarLegendasProps {
@@ -67,8 +68,8 @@ export function GerenciarLegendas({
         onMensagem(`Legenda “${nomeNormalizado}” criada.`);
       }
       novo();
-    } catch {
-      setErro("Não foi possível salvar a legenda.");
+    } catch (erro) {
+      setErro(traduzirErro(erro).mensagem);
     } finally {
       setSalvando(false);
     }
@@ -89,8 +90,8 @@ export function GerenciarLegendas({
       await onExcluir(legenda.id);
       if (editandoId === legenda.id) novo();
       onMensagem(`Legenda “${legenda.nome}” excluída.`);
-    } catch {
-      onMensagem("Não foi possível excluir a legenda.");
+    } catch (erro) {
+      onMensagem(traduzirErro(erro).mensagem);
     }
   }
 
@@ -121,14 +122,14 @@ export function GerenciarLegendas({
               <div className="legend-manager__list">
                 {legendas.map((legenda) => (
                   <div className={`legend-row${editandoId === legenda.id ? " legend-row--active" : ""}`} key={legenda.id}>
-                    <button type="button" className="legend-row__main" onClick={() => editar(legenda)}>
+                    <button type="button" disabled={salvando} className="legend-row__main" onClick={() => editar(legenda)}>
                       <span style={{ backgroundColor: legenda.cor }} aria-hidden="true" />
                       <span><strong>{legenda.nome}</strong><small>{usoPorLegenda[legenda.id] ?? 0} marcações</small></span>
                     </button>
-                    <button type="button" className="legend-row__delete" onClick={() => void excluir(legenda)} aria-label={`Excluir ${legenda.nome}`}>×</button>
+                    <button type="button" disabled={salvando} className="legend-row__delete" onClick={() => void excluir(legenda)} aria-label={`Excluir ${legenda.nome}`}>×</button>
                   </div>
                 ))}
-                <button type="button" className="button button--ghost button--full" onClick={novo}>+ Nova legenda</button>
+                <button type="button" disabled={salvando} className="button button--ghost button--full" onClick={novo}>+ Nova legenda</button>
               </div>
               <form className="legend-form" onSubmit={salvar}>
                 <p className="field-label">{editandoId ? "Editar legenda" : "Nova legenda"}</p>

@@ -1,5 +1,9 @@
 # Auditoria da arquitetura — Fase 1: Fundação
 
+Registro da Fase 1. As lacunas de testes, lint, CI, sincronização e histórico
+abaixo descrevem aquela entrega; consulte a revisão da
+[Fase 2 — Confiabilidade operacional](confiabilidade.md) para o estado atual.
+
 Revisão inicial: 18/09/2026; consolidação: 19/09/2026. Fonte principal: código presente no workspace, incluindo as
 alterações locais anteriores a esta revisão. README, regras e testes foram
 confrontados com essa implementação. Esta auditoria não inspecionou a produção.

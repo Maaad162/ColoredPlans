@@ -33,7 +33,7 @@ function criarParKit(banco, uid, promover = false) {
 }
 
 test("perfis: autorização remota independente da interface", async (t) => {
-  const ambiente = await initializeTestEnvironment({ projectId: "lmcoloredplans" });
+  const ambiente = await initializeTestEnvironment({ projectId: "demo-coloredplans" });
   const usuarios = ["perfil-apontamento", "perfil-estoque"];
   try {
     await ambiente.clearFirestore();

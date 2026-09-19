@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { observarPerfil } from "../services/perfil";
 import type { PerfilUsuario } from "../types/planta";
+import { registrarErro, traduzirErro } from "../services/erros";
 
 export function usePerfil(usuarioId: string) {
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     setCarregando(true);
@@ -18,12 +20,12 @@ export function usePerfil(usuarioId: string) {
       },
       (falha) => {
         setPerfil(null);
-        console.error("Falha ao carregar perfil:", falha);
-        setErro("Não foi possível carregar o perfil da conta.");
+        registrarErro("perfil", falha);
+        setErro(traduzirErro(falha).mensagem);
         setCarregando(false);
       },
     );
-  }, [usuarioId]);
+  }, [usuarioId, tentativa]);
 
-  return { perfil, carregando, erro };
+  return { perfil, carregando, erro, tentarNovamente: () => setTentativa(v => v + 1) };
 }

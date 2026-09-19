@@ -7,7 +7,7 @@ import { garantirMapaInicial } from "../src/services/inicializarMapa.ts";
 import { migrarObra } from "../src/services/migracoes.ts";
 
 test("fundação: preservação dos dados e inicialização concorrente", async (t) => {
-  const ambiente = await initializeTestEnvironment({ projectId: "lmcoloredplans" });
+  const ambiente = await initializeTestEnvironment({ projectId: "demo-coloredplans" });
   const uid = "dados-estoque";
   const obraId = "obra-teste";
   const base = `usuarios/${uid}/obras/${obraId}`;

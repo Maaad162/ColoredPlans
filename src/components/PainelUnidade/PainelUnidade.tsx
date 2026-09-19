@@ -7,6 +7,7 @@ interface PainelUnidadeProps {
   statusId: StatusId | null;
   legendas: StatusConfig[];
   onDefinirStatus: (status: StatusId | null) => void;
+  onHistorico: () => void;
 }
 
 export function PainelUnidade({
@@ -14,6 +15,7 @@ export function PainelUnidade({
   statusId,
   legendas,
   onDefinirStatus,
+  onHistorico,
 }: PainelUnidadeProps) {
   const status = getStatus(statusId, legendas);
 
@@ -56,6 +58,7 @@ export function PainelUnidade({
             </div>
           </dl>
 
+          <button type="button" className="link-button" onClick={onHistorico}>Histórico desta unidade</button>
           <div className="painel-unidade__edicao">
             <p className="field-label">Alterar status</p>
             <PaletaStatus

@@ -1,3 +1,4 @@
+import { ErroOperacional } from "./erros.ts";
 import { OBRA_LEGADA_ID } from "../config/dados.ts";
 import type {
   ArquivoMarcacoes,
@@ -43,6 +44,7 @@ export function carregarAbaAtiva(usuarioId: string, obraId: string): string | nu
     return localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}:${obraId}`)
       ?? (obraId === OBRA_LEGADA_ID ? localStorage.getItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}`) : null);
   } catch {
+    // Preferência opcional: sem localStorage, os mapas continuam no Firestore.
     return null;
   }
 }
@@ -51,6 +53,7 @@ export function salvarAbaAtiva(usuarioId: string, obraId: string, mapaId: string
   try {
     localStorage.setItem(`${ABA_ATIVA_STORAGE_PREFIX}:${usuarioId}:${obraId}`, mapaId);
   } catch {
+    // Navegação segue em memória quando o navegador bloqueia preferências locais.
     // A preferência local é opcional; os mapas continuam no Firestore.
   }
 }
@@ -103,18 +106,18 @@ export function validarArquivoImportacao(
   legendas: StatusConfig[],
 ): Marcacoes {
   if (!conteudo || typeof conteudo !== "object") {
-    throw new Error("O arquivo não contém um objeto JSON válido.");
+    throw new ErroOperacional("validacao", "O arquivo não contém um objeto JSON válido.");
   }
 
   const version = (conteudo as { version?: unknown }).version;
   // Arquivos antigos sem versão continuam compatíveis com o formato atual.
   if (version !== undefined && version !== 1) {
-    throw new Error("Versão do arquivo não suportada. Importe um arquivo JSON de versão 1.");
+    throw new ErroOperacional("validacao", "Versão do arquivo não suportada. Importe um arquivo JSON de versão 1.");
   }
 
   const candidatas = (conteudo as { unidades?: unknown }).unidades;
   if (!Array.isArray(candidatas)) {
-    throw new Error('O campo "unidades" deve ser uma lista.');
+    throw new ErroOperacional("validacao", 'O campo "unidades" deve ser uma lista.');
   }
 
   const idsValidos = new Set(unidades.map((unidade) => unidade.id));
@@ -124,23 +127,23 @@ export function validarArquivoImportacao(
 
   for (const item of candidatas) {
     if (!item || typeof item !== "object") {
-      throw new Error("Existe uma unidade com formato inválido.");
+      throw new ErroOperacional("validacao", "Existe uma unidade com formato inválido.");
     }
 
     const { bloco, numero, status } = item as Record<string, unknown>;
     if (typeof bloco !== "string" || typeof numero !== "string") {
-      throw new Error("Toda unidade precisa de bloco e número em texto.");
+      throw new ErroOperacional("validacao", "Toda unidade precisa de bloco e número em texto.");
     }
 
     const id = `bloco-${bloco}-${numero}`;
     if (!idsValidos.has(id)) {
-      throw new Error(`A unidade ${bloco}/${numero} não existe nesta planta.`);
+      throw new ErroOperacional("validacao", `A unidade ${bloco}/${numero} não existe nesta planta.`);
     }
     if (encontrados.has(id)) {
-      throw new Error(`A unidade ${bloco}/${numero} aparece mais de uma vez.`);
+      throw new ErroOperacional("validacao", `A unidade ${bloco}/${numero} aparece mais de uma vez.`);
     }
     if (status !== null && !idsDeStatus.has(status as StatusId)) {
-      throw new Error(`Status inválido na unidade ${bloco}/${numero}.`);
+      throw new ErroOperacional("validacao", `Status inválido na unidade ${bloco}/${numero}.`);
     }
 
     encontrados.add(id);
@@ -148,7 +151,7 @@ export function validarArquivoImportacao(
   }
 
   if (candidatas.length === 0) {
-    throw new Error("O arquivo não contém unidades.");
+    throw new ErroOperacional("validacao", "O arquivo não contém unidades.");
   }
 
   return marcacoes;

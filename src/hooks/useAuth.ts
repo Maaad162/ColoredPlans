@@ -6,20 +6,23 @@ import {
   type User,
 } from "firebase/auth";
 import { auth } from "../config/firebase";
+import { registrarErro, traduzirErro } from "../services/erros";
 
 export function useAuth() {
   const [usuario, setUsuario] = useState<User | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
-    const limiteDeEspera = window.setTimeout(() => setCarregando(false), 4000);
     const cancelarObservacao = onAuthStateChanged(auth, (usuarioAtual) => {
-        window.clearTimeout(limiteDeEspera);
         setUsuario(usuarioAtual);
+        setErro(null);
         setCarregando(false);
+      }, (falha) => {
+        registrarErro("sessão", falha); setErro(traduzirErro(falha).mensagem);
+        setUsuario(null); setCarregando(false);
       });
     return () => {
-      window.clearTimeout(limiteDeEspera);
       cancelarObservacao();
     };
   }, []);
@@ -32,5 +35,5 @@ export function useAuth() {
     await signOut(auth);
   }
 
-  return { usuario, carregando, entrar, sair };
+  return { usuario, carregando, entrar, sair, erro };
 }
