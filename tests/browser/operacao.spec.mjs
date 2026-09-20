@@ -111,6 +111,11 @@ test('falha permanente: rollback, erro persistente e recuperação sem reload', 
   await ambiente.withSecurityRulesDisabled(c => updateDoc(doc(c.firestore(), mapaPath()), { schemaVersion: 1 }));
   await expect(painel(page).getByRole('button', { name: 'Pendente', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('Erro ao sincronizar', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Erro ao sincronizar', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Fechar mensagem de erro', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Erro ao sincronizar', exact: true }).click();
   await page.getByRole('button', { name: 'Tentar novamente', exact: true }).click();
   await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
   expect((await estadoRemoto())['bloco-01-001']).toBe('feito');
@@ -172,7 +177,7 @@ test('Kits: criação, edição, vínculo, desassociação, isolamento e exclus�
   await page.getByRole('button', { name: 'Central de Kits', exact: true }).click();
   await page.getByRole('button', { name: '+ Criar Kit', exact: true }).click();
   await page.getByLabel('Nome do Kit').fill('Kit hidráulico');
-  await page.getByLabel('Cód. Sienge', { exact: true }).fill('100');
+  await page.getByLabel('Referência SIENGE (opcional)', { exact: true }).fill('100');
   await page.getByLabel('Descrição', { exact: true }).fill('Tubo');
   await page.getByRole('button', { name: 'Salvar Kit', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Kit hidráulico', exact: true })).toBeVisible();
@@ -194,6 +199,15 @@ test('Kits: criação, edição, vínculo, desassociação, isolamento e exclus�
   expect(resultado.negado).toBe(true);
   await expect(page.getByRole('heading', { name: 'Kit final', exact: true })).toBeVisible();
   expect((await getDocFromServer(doc(banco, `usuarios/${uid}/kits/${resultado.kitId}`))).data().unidadeIds).toEqual([]);
+  await page.getByRole('button', { name: 'Mapas e marcações', exact: true }).click();
+  await page.getByRole('tab', { name: /^Kit final/ }).click();
+  await selecionar(page);
+  await painel(page).getByRole('button', { name: 'Concluído', exact: true }).click();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const mapaKit = await getDocFromServer(doc(banco, `usuarios/${uid}/obras/${obraId}/mapas/${resultado.mapaId}`));
+  expect(mapaKit.data().marcacoes['bloco-01-001']).toBe('feito');
+  expect((await eventos()).docs.some(item => item.data().mapaId === resultado.mapaId && item.data().acao === 'unidade')).toBe(true);
+  await page.getByRole('button', { name: 'Central de Kits', exact: true }).click();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: 'Excluir Kit', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Nenhum Kit cadastrado' })).toBeVisible();
@@ -243,4 +257,48 @@ test('importação agrupada, exportação e paginação limitada do histórico',
   await expect(page.getByRole('button', { name: 'Mais antigos', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Mais recentes', exact: true }).click();
   await expect(lista.locator(':scope > li')).toHaveCount(20);
+});
+
+test('Apontamento: resumo, filtro e contexto operacional permanecem ligados ao mapa atual', async ({ page }) => {
+  await expect(page.getByRole('region', { name: 'Resumo operacional do mapa' })).toContainText('Ainda não concluídas100');
+  await page.getByLabel('Status', { exact: true }).selectOption('pendente');
+  await expect(page.getByRole('button', { name: /Bloco 01, unidade 001/ })).not.toHaveClass(/unidade--atenuada/);
+  await expect(page.getByRole('button', { name: /Bloco 01, unidade 002/ })).toHaveClass(/unidade--atenuada/);
+  await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click();
+  await selecionar(page);
+  await painel(page).getByLabel('Responsável/equipe').fill('Equipe hidráulica');
+  await painel(page).getByLabel('Observação operacional').fill('Aguardando chegada do registro.');
+  await painel(page).getByRole('button', { name: 'Salvar contexto', exact: true }).click();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const contexto = await getDocFromServer(doc(banco, `${mapaPath()}/contextos/bloco-01-001`));
+  expect(contexto.data().responsavel).toBe('Equipe hidráulica');
+  const historico = await eventos();
+  expect(historico.docs.some(item => item.data().acao === 'contexto')).toBe(true);
+  await page.getByLabel('Responsável', { exact: true }).selectOption('Equipe hidráulica');
+  await expect(page.getByRole('button', { name: /Bloco 01, unidade 001/ })).not.toHaveClass(/unidade--atenuada/);
+  await expect(page.getByRole('button', { name: /Bloco 02, unidade 001/ })).toHaveClass(/unidade--atenuada/);
+  await page.reload(); await selecionar(page);
+  await expect(painel(page).getByLabel('Observação operacional')).toHaveValue('Aguardando chegada do registro.');
+});
+
+test('Kit no mapa distingue necessidade, consumo estimado, disponibilidade manual e déficit', async ({ page }) => {
+  await ambiente.withSecurityRulesDisabled(async c => {
+    const db = c.firestore(), kitId = 'kit-operacao', mapaId = 'mapa-kit-operacao';
+    const materiais = [{ id: 'registro', codigoSienge: '123', descricao: 'Registro', detalhe: '', quantidadePorKit: 1,
+      unidadeMedida: 'un', disponibilidadeManual: 0 }];
+    await setDoc(doc(db, `usuarios/${uid}/kits/${kitId}`), { schemaVersion: 1, userId: uid, obraId, mapaId, nome: 'Hidráulica', materiais,
+      unidadeIds: ['bloco-01-001', 'bloco-02-001'], criadoEm: new Date(), atualizadoEm: new Date() });
+    await setDoc(doc(db, `usuarios/${uid}/obras/${obraId}/mapas/${mapaId}`), { schemaVersion: 1, userId: uid, obraId, nome: 'Hidráulica', tipo: 'kit', kitId,
+      kitUnidadeIds: ['bloco-01-001', 'bloco-02-001'], marcacoes: { 'bloco-01-001': 'feito' }, criadoEm: new Date() });
+  });
+  await page.getByRole('tab', { name: /Hidráulica/ }).click();
+  const resumo = page.getByRole('region', { name: 'Resumo operacional do mapa' });
+  await expect(resumo).toContainText('Concluídas1 / 2');
+  await resumo.getByText('Ver materiais necessários para concluir').click();
+  await expect(resumo).toContainText('necessário 1 un; consumo estimado 1 un');
+  await expect(resumo).toContainText('disponível manualmente 0 un; déficit 1 un');
+  await expect(resumo).toContainText('Limitante: Registro');
+  await ambiente.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(), `usuarios/${uid}/kits/kit-operacao`), { 'materiais': [{ id: 'registro', codigoSienge: '123', descricao: 'Registro', detalhe: '', quantidadePorKit: 1, unidadeMedida: 'un', disponibilidadeManual: null }] }));
+  await expect(resumo).toContainText('disponibilidade não informada');
+  await expect(resumo).toContainText('Não foi possível verificar a capacidade');
 });

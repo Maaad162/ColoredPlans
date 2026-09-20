@@ -11,11 +11,11 @@ import {
   type Unsubscribe,
   type SnapshotMetadata,
 } from "firebase/firestore";
-import { corTextoParaFundo, simboloDaLegenda } from "../config/statuses";
+import { categoriaLegada, corTextoParaFundo, simboloDaLegenda } from "../config/statuses";
 import { CURRENT_SCHEMA_VERSION, lerSchemaVersion } from "../config/dados";
 import { legendasCollection } from "./caminhos";
-import type { LegendaUsuario } from "../types/planta";
-import { validarLegenda } from "./validacoes";
+import type { CategoriaExecucao, LegendaUsuario } from "../types/planta";
+import { validarCategoriaExecucao, validarLegenda } from "./validacoes";
 
 export function observarLegendas(
   usuarioId: string,
@@ -47,6 +47,7 @@ export function observarLegendas(
                   typeof data.simbolo === "string" && data.simbolo
                     ? data.simbolo.slice(0, 2)
                     : simboloDaLegenda(nome),
+                categoria: data.categoria === undefined ? categoriaLegada(documento.id, nome) : validarCategoriaExecucao(data.categoria),
                 criadoEm:
                   data.criadoEm instanceof Timestamp
                     ? data.criadoEm.toDate().toISOString()
@@ -67,14 +68,17 @@ export function criarLegendaRemota(
   usuarioId: string,
   nome: string,
   cor: string,
+  categoria: CategoriaExecucao = categoriaLegada("", nome),
 ) {
   validarLegenda(nome, cor);
+  validarCategoriaExecucao(categoria);
   const referencia = doc(legendasCollection(usuarioId));
   return setDoc(referencia, {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     userId: usuarioId,
     nome: nome.trim().slice(0, 48),
     cor,
+    categoria,
     corTexto: corTextoParaFundo(cor),
     simbolo: simboloDaLegenda(nome),
     criadoEm: serverTimestamp(),
@@ -87,12 +91,15 @@ export function editarLegendaRemota(
   legendaId: string,
   nome: string,
   cor: string,
+  categoria: CategoriaExecucao = categoriaLegada(legendaId, nome),
 ) {
   validarLegenda(nome, cor);
+  validarCategoriaExecucao(categoria);
   return updateDoc(doc(legendasCollection(usuarioId), legendaId), {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     nome: nome.trim().slice(0, 48),
     cor,
+    categoria,
     corTexto: corTextoParaFundo(cor),
     simbolo: simboloDaLegenda(nome),
     atualizadoEm: serverTimestamp(),

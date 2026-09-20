@@ -17,10 +17,12 @@ import { useLegendas } from "./hooks/useLegendas";
 import { usePerfil } from "./hooks/usePerfil";
 import { usePlanta } from "./hooks/usePlanta";
 import { useKits } from "./hooks/useKits";
+import { useContextoUnidade, useContextosMapa } from "./hooks/useContextoUnidade";
 import { ProvedorSincronizacao } from "./hooks/useSincronizacao";
 import { IndicadorSincronizacao, FalhasSincronizacao } from "./components/EstadoSincronizacao";
 import { registrarErro, traduzirErro } from "./services/erros";
 import { Historico } from "./components/Historico";
+import { calcularResumoExecucao, calcularResumoMateriais } from "./services/operacao";
 import {
   baixarMarcacoes,
   baixarCsvMapas,
@@ -84,6 +86,10 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [secaoAtiva, setSecaoAtiva] = useState<"mapas" | "kits">("mapas");
   const [historico, setHistorico] = useState<{ mapaId?: string; unidadeId?: string } | null>(null);
+  const [responsavelFiltro, setResponsavelFiltro] = useState("todos");
+  const contextosMapa = useContextosMapa(usuario.uid, obra.id, planta.abaAtual);
+  const contextoState = useContextoUnidade(usuario.uid, obra.id, planta.abaAtual, planta.unidadeSelecionada?.id,
+    contextosMapa.find(item => item.unidadeId === planta.unidadeSelecionada?.id));
 
   useEffect(() => {
     if (!mensagem) return;
@@ -91,11 +97,20 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
     return () => window.clearTimeout(timeout);
   }, [mensagem]);
 
+  useEffect(() => {
+    setResponsavelFiltro("todos");
+  }, [planta.abaAtual?.id]);
+
   if (legendasState.carregando || !planta.abaAtual) return <>
     <AuthLoading />
     <IndicadorSincronizacao />
     <FalhasSincronizacao />
   </>;
+  const unidadesAplicaveis = planta.abaAtual.tipo === "kit" && planta.abaAtual.kitUnidadeIds.length
+    ? planta.unidades.filter(unidade => planta.abaAtual.kitUnidadeIds.includes(unidade.id)) : planta.unidades;
+  const resumoExecucao = calcularResumoExecucao(unidadesAplicaveis, planta.marcacoes, planta.statuses);
+  const kitAtivo = kitsState.kits.find(kit => kit.id === planta.abaAtual.kitId);
+  const resumoMateriais = kitAtivo ? calcularResumoMateriais(kitAtivo, resumoExecucao) : null;
 
   async function importar(arquivo: File) {
     try {
@@ -232,7 +247,27 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
           }}
           onImportar={importar}
           onLimparTudo={limparTudo}
+          responsaveis={[...new Set(contextosMapa.map(item => item.responsavel).filter(Boolean))].sort()}
+          responsavelFiltro={responsavelFiltro}
+          onResponsavelFiltro={setResponsavelFiltro}
+          onLimparFiltros={() => { planta.setBlocoFiltro("todos"); planta.setStatusFiltro("todos"); setResponsavelFiltro("todos"); }}
         />
+
+        <section className="operation-summary" aria-label="Resumo operacional do mapa">
+          <div><span>Concluídas</span><strong>{resumoExecucao.concluidas} / {resumoExecucao.total}</strong></div>
+          <div><span>Em andamento</span><strong>{resumoExecucao.andamento}</strong></div>
+          <div><span>Bloqueadas</span><strong>{resumoExecucao.bloqueadas}</strong></div>
+          <div><span>Ainda não concluídas</span><strong>{resumoExecucao.restantes}</strong></div>
+          {resumoMateriais && <details className="materials-summary"><summary>Ver materiais necessários para concluir</summary>
+            <p>Valores teóricos do Kit; não representam baixa ou saldo oficial do SIENGE.</p>
+            {kitAtivo?.materiais.some(item => item.disponibilidadeManual !== null) && <p>Disponibilidade informada manualmente · atualização do Kit: {new Date(kitAtivo.atualizadoEm).toLocaleString("pt-BR")}{kitAtivo.atualizadoPor ? ` · por ${kitAtivo.atualizadoPor}` : ""}</p>}
+            <ul>{resumoMateriais.materiais.map(material => <li key={material.materialId}><strong>{material.descricao}</strong>: necessário {material.necessidadeRestante.toLocaleString("pt-BR")} {material.unidadeMedida}; consumo estimado {material.consumoEstimado.toLocaleString("pt-BR")} {material.unidadeMedida}
+              {material.disponibilidade === null ? "; disponibilidade não informada" : `; disponível manualmente ${material.disponibilidade.toLocaleString("pt-BR")} ${material.unidadeMedida}${material.deficit ? `; déficit ${material.deficit.toLocaleString("pt-BR")} ${material.unidadeMedida}` : "; suficiente"}`}</li>)}</ul>
+            {resumoMateriais.capacidade === null ? <p>Não foi possível verificar a capacidade: há disponibilidade desconhecida.</p>
+              : resumoMateriais.capacidade >= resumoExecucao.restantes ? <p>Material informado suficiente para concluir as {resumoExecucao.restantes} unidades restantes.</p>
+              : <p>Disponibilidade informada permite executar {resumoMateriais.capacidade} das {resumoExecucao.restantes} unidades restantes. Déficit de capacidade: {resumoMateriais.deficitUnidades} unidade(s). Limitante: {resumoMateriais.materiais.find(item => item.materialId === resumoMateriais.materialLimitanteId)?.descricao}.</p>}
+          </details>}
+        </section>
 
         <div
           className="workspace"
@@ -247,7 +282,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
                 <h2 id="planta-titulo">Planta do empreendimento</h2>
                 {planta.abaAtual.tipo === "kit" && (
                   <p className="kit-map-summary">
-                    <strong>{planta.abaAtual.kitUnidadeIds.length}</strong> unidade(s) receberam este Kit. O contorno verde indica a utilização.
+                    <strong>{planta.abaAtual.kitUnidadeIds.length}</strong> unidade(s) aplicáveis a este serviço. O contorno verde indica a aplicabilidade.
                   </p>
                 )}
               </div>
@@ -264,7 +299,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
               marcacoes={planta.marcacoes}
               legendas={planta.statuses}
               selecionadaId={planta.unidadeSelecionada?.id ?? null}
-              unidadeAtenuada={planta.unidadeAtenuada}
+              unidadeAtenuada={(id) => planta.unidadeAtenuada(id) || (responsavelFiltro !== "todos" && contextosMapa.find(item => item.unidadeId === id)?.responsavel !== responsavelFiltro)}
               onSelecionar={planta.selecionarUnidade}
               zoom={zoom}
               onZoomChange={setZoom}
@@ -275,6 +310,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
 
           <aside className="sidebar" aria-label="Informações da planta">
             <PainelUnidade
+              key={`${planta.abaAtual.id}:${planta.unidadeSelecionada?.id ?? "sem-selecao"}`}
               onHistorico={() => setHistorico({ mapaId: planta.abaAtual.id, unidadeId: planta.unidadeSelecionada?.id })}
               unidade={planta.unidadeSelecionada}
               legendas={planta.statuses}
@@ -288,6 +324,8 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
                   planta.definirStatus(planta.unidadeSelecionada.id, status);
                 }
               }}
+              contexto={contextoState.contexto}
+              onSalvarContexto={contextoState.salvar}
             />
             <Legenda
               legendas={planta.statuses}

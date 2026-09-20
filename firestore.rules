@@ -38,7 +38,8 @@ service cloud.firestore {
 
     function legendaValida(data, userId) {
       return schemaAtual(data) && data.userId == userId && nomeValido(data, 48)
-             && data.cor is string && data.cor.matches('^#[0-9a-fA-F]{6}$');
+             && data.cor is string && data.cor.matches('^#[0-9a-fA-F]{6}$')
+             && data.get('categoria', 'outro') in ['nao-iniciado', 'andamento', 'concluido', 'bloqueado', 'outro'];
     }
 
     function mapaManualValido(data) {
@@ -71,6 +72,7 @@ service cloud.firestore {
     function kitValido(data, userId, kitId) {
       let mapa = getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(data.obraId)/mapas/$(data.mapaId)).data;
       return schemaAtual(data) && data.userId == userId && nomeValido(data, 80)
+             && data.get('atualizadoPor', userId) == userId
              && data.obraId is string && data.obraId.matches('^[^/]+$')
              && data.materiais is list && data.materiais.size() > 0
              && data.unidadeIds is list && data.unidadeIds.size() <= 100
@@ -114,6 +116,25 @@ service cloud.firestore {
       allow delete: if perfilPermitido(userId) && resource.data.userId == userId
                     && schemaConhecido(resource.data)
                     && mapaSemVinculo(userId, obraId, mapaId, resource.data);
+    }
+
+    function contextoValido(data, userId, obraId, mapaId, unidadeId) {
+      return data.keys().hasOnly(['schemaVersion', 'userId', 'obraId', 'mapaId', 'unidadeId', 'observacao',
+                                  'responsavel', 'atualizadoEm', 'atualizadoPor', 'ultimoEventoId'])
+        && schemaAtual(data) && data.userId == userId && data.obraId == obraId && data.mapaId == mapaId
+        && data.unidadeId == unidadeId && unidadeId.matches('^bloco-0[1-7]-[0-9]{3}$')
+        && data.observacao is string && data.observacao.size() <= 240
+        && data.responsavel is string && data.responsavel.size() <= 80
+        && data.atualizadoEm == request.time && data.atualizadoPor == userId
+        && data.ultimoEventoId is string && data.ultimoEventoId.size() > 0;
+    }
+
+    match /usuarios/{userId}/obras/{obraId}/mapas/{mapaId}/contextos/{unidadeId} {
+      allow read: if perfilPermitido(userId) && (!exists(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(mapaId)/contextos/$(unidadeId))
+        || resource.data.userId == userId);
+      allow create, update: if perfilPermitido(userId) && contextoValido(request.resource.data, userId, obraId, mapaId, unidadeId)
+        && getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/historico/$(request.resource.data.ultimoEventoId)).data.acao == 'contexto';
+      allow delete: if false;
     }
 
     match /usuarios/{userId}/legendas/{legendaId} {
@@ -198,11 +219,25 @@ service cloud.firestore {
         && data.antes == {} && data.depois == {} && data.unidadeIds == [];
     }
 
+    function eventoContexto(data, userId, obraId, eventoId) {
+      let unidadeId = data.unidadeIds[0];
+      let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId)/contextos/$(unidadeId);
+      let anterior = exists(caminho) ? get(caminho).data : {};
+      let atual = getAfter(caminho).data;
+      return data.unidadeIds.size() == 1
+        && atual.userId == userId && atual.obraId == obraId && atual.mapaId == data.mapaId
+        && atual.unidadeId == unidadeId && atual.ultimoEventoId == eventoId
+        && data.antes.observacao == anterior.get('observacao', '') && data.antes.responsavel == anterior.get('responsavel', '')
+        && data.depois.observacao == atual.observacao && data.depois.responsavel == atual.responsavel
+        && data.antes != data.depois;
+    }
+
     match /usuarios/{userId}/obras/{obraId}/historico/{eventoId} {
       allow read: if perfilPermitido(userId) && resource.data.userId == userId && resource.data.obraId == obraId;
       allow create: if perfilPermitido(userId) && eventoEstruturado(request.resource.data, userId, obraId)
         && ((request.resource.data.acao == 'criar' && eventoCriacao(request.resource.data, userId, obraId, eventoId))
           || (request.resource.data.acao == 'excluir' && eventoExclusao(request.resource.data, userId, obraId))
+          || (request.resource.data.acao == 'contexto' && eventoContexto(request.resource.data, userId, obraId, eventoId))
           || (request.resource.data.acao in ['unidade', 'marcacoes', 'renomear'] && eventoEdicao(request.resource.data, userId, obraId, eventoId)));
       allow update, delete: if false;
     }

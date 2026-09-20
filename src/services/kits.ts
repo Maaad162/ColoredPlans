@@ -62,6 +62,7 @@ export function observarKits(
                 data.atualizadoEm instanceof Timestamp
                   ? data.atualizadoEm.toDate().toISOString()
                   : new Date().toISOString(),
+              atualizadoPor: typeof data.atualizadoPor === "string" ? data.atualizadoPor : "",
             } satisfies Kit;
           })
           .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
@@ -106,6 +107,7 @@ export async function salvarKitRemoto(
         nome,
         materiais: validarMateriais(dados.materiais),
         atualizadoEm: serverTimestamp(),
+        atualizadoPor: usuarioId,
       });
       transacao.update(referenciaMapa, {
         schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -131,6 +133,7 @@ export async function salvarKitRemoto(
     unidadeIds: [],
     criadoEm: serverTimestamp(),
     atualizadoEm: serverTimestamp(),
+    atualizadoPor: usuarioId,
   });
   lote.set(mapaDocument(usuarioId, obraId, mapaId), {
     userId: usuarioId,
@@ -202,6 +205,7 @@ export async function atualizarUnidadesKit(
       obraId,
       unidadeIds: idsValidos,
       atualizadoEm: serverTimestamp(),
+      atualizadoPor: usuarioId,
     });
     transacao.update(referenciaMapa, {
       schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -211,12 +215,4 @@ export async function atualizarUnidadesKit(
       atualizadoPor: usuarioId,
     });
   });
-}
-
-export function calcularConsumoKit(kit: Kit) {
-  const unidadesAtendidas = new Set(kit.unidadeIds).size;
-  return kit.materiais.map((material) => ({
-    ...material,
-    utilizado: material.quantidadePorKit * unidadesAtendidas,
-  }));
 }

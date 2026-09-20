@@ -145,8 +145,6 @@
 
 .unidade--kit-utilizado .unidade__lote {
   stroke: #08794d;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 2px rgba(8, 121, 77, 0.35));
 }
 
 .unidade--kit-nao-utilizado .unidade__lote {

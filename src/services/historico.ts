@@ -4,7 +4,7 @@ import { UNIDADE_BY_ID } from "../data/planta.ts";
 import { ErroOperacional } from "./erros.ts";
 import type { MapaServico, Marcacoes } from "../types/planta";
 
-export type AcaoHistorico = "unidade" | "marcacoes" | "criar" | "renomear" | "excluir";
+export type AcaoHistorico = "unidade" | "marcacoes" | "criar" | "renomear" | "excluir" | "contexto";
 export type ComandoMapa = { mapa: MapaServico } & (
   { acao: "unidade"; unidadeId: string; status: string | null }
   | { acao: "marcacoes"; marcacoes: Marcacoes }

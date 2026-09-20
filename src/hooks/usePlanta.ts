@@ -16,6 +16,7 @@ import { garantirMapaInicial } from "../services/inicializarMapa";
 import { db } from "../config/firebase";
 import { CURRENT_SCHEMA_VERSION } from "../config/dados";
 import type {
+  CategoriaExecucao,
   EstadoMapas,
   FerramentaPintura,
   Marcacoes,
@@ -24,6 +25,20 @@ import type {
   StatusId,
   Obra,
 } from "../types/planta";
+
+const CATEGORIAS_EXECUCAO: CategoriaExecucao[] = [
+  "nao-iniciado",
+  "andamento",
+  "concluido",
+  "bloqueado",
+  "outro",
+];
+
+function filtroCategoriaValido(filtro: StatusFilter) {
+  if (!filtro.startsWith("categoria:")) return false;
+  const categoria = filtro.slice("categoria:".length);
+  return CATEGORIAS_EXECUCAO.some(item => item === categoria);
+}
 
 export function usePlanta(
   usuarioId: string,
@@ -69,6 +84,7 @@ export function usePlanta(
     if (
       statusFiltro !== "todos" &&
       statusFiltro !== "sem-marcacao" &&
+      !filtroCategoriaValido(statusFiltro) &&
       !legendas.some((legenda) => legenda.id === statusFiltro)
     ) {
       setStatusFiltro("todos");
@@ -289,7 +305,9 @@ export function usePlanta(
       statusFiltro !== "todos" &&
       (statusFiltro === "sem-marcacao"
         ? status !== null
-        : status !== statusFiltro);
+        : statusFiltro.startsWith("categoria:")
+          ? (status ? legendas.find(item => item.id === status)?.categoria ?? "outro" : "nao-iniciado") !== statusFiltro.slice(10)
+          : status !== statusFiltro);
     return blocoNaoCorresponde || statusNaoCorresponde;
   }
 

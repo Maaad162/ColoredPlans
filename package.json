@@ -1,7 +1,7 @@
 {
   "name": "lm-colored-plans",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,7 @@
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint . --max-warnings 0",
     "test": "node --experimental-strip-types --test tests/storage.test.mjs tests/migracoes.test.mjs tests/confiabilidade.test.mjs",
-    "test:rules": "firebase emulators:exec --project demo-coloredplans --only firestore \"node --experimental-strip-types --test --test-concurrency=1 tests/firestore.rules.test.mjs tests/migracoes.firestore.test.mjs tests/perfis.firestore.test.mjs tests/dados.firestore.test.mjs tests/historico.firestore.test.mjs\"",
+    "test:rules": "firebase emulators:exec --project demo-coloredplans --only firestore \"node --experimental-strip-types --test --test-concurrency=1 tests/firestore.rules.test.mjs tests/migracoes.firestore.test.mjs tests/perfis.firestore.test.mjs tests/dados.firestore.test.mjs tests/historico.firestore.test.mjs tests/operacao.firestore.test.mjs\"",
     "test:ui": "firebase emulators:exec --project demo-coloredplans --only auth,firestore \"playwright test\"",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:rules && npm run test:ui && npm run build"
   },

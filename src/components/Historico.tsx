@@ -17,7 +17,7 @@ function lerMarcacoes(valor: unknown): Marcacoes {
   return resultado;
 }
 function lerAcao(acao: unknown): AcaoHistorico {
-  if (acao === "unidade" || acao === "marcacoes" || acao === "criar" || acao === "excluir" || acao === "renomear") return acao;
+  if (acao === "unidade" || acao === "marcacoes" || acao === "criar" || acao === "excluir" || acao === "renomear" || acao === "contexto") return acao;
   throw new Error("Histórico inválido.");
 }
 function converter(documento: QueryDocumentSnapshot): EventoHistorico {
@@ -76,7 +76,8 @@ export function Historico({ usuarioId, obraId, legendas, mapaId, unidadeId, onFe
           {evento.acao === "criar" && <p>Mapa criado: {evento.nomeAtual}</p>}
           {evento.acao === "excluir" && <p>Mapa excluído: {evento.nomeAnterior}</p>}
           {evento.acao === "renomear" && <p>{evento.nomeAnterior} → {evento.nomeAtual}</p>}
-          {evento.unidadeIds.length > 0 && <details open={evento.unidadeIds.length === 1}>
+          {evento.acao === "contexto" && <p>Contexto atualizado: observação “{evento.depois.observacao || "sem observação"}”; responsável “{evento.depois.responsavel || "não informado"}”.</p>}
+          {evento.acao !== "contexto" && evento.unidadeIds.length > 0 && <details open={evento.unidadeIds.length === 1}>
             <summary>{evento.unidadeIds.length} unidade(s) alterada(s)</summary>
             <ul>{evento.unidadeIds.map(id => <li key={id}>{id}: {getStatus(evento.antes[id] ?? null, legendas).nome} → {getStatus(evento.depois[id] ?? null, legendas).nome}</li>)}</ul>
           </details>}

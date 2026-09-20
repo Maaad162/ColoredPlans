@@ -1,6 +1,6 @@
 # ColoredPlans
 
-Versão atual: **1.4.0 — Confiabilidade operacional**.
+Versão atual: **1.5.0 — Operação da obra**.
 
 ## Objetivo e escopo
 
@@ -15,7 +15,8 @@ imediatamente o que foi feito, o que falta e o que é necessário para continuar
 A **Fase 1 — Fundação** consolidou usuários, permissões, obras e schema.
 A **Fase 2 — Confiabilidade operacional** acrescenta validação automatizada,
 tratamento de erros, sincronização explícita e histórico operacional da planta.
-Não inclui funcionalidades da Fase 3.
+A **Fase 3 — Operação da obra** relaciona execução, Kits, necessidade prevista,
+pendências e responsáveis sem criar movimentações de estoque.
 
 ## Tecnologias
 
@@ -98,7 +99,7 @@ setores antigos, pois anteriormente havia escolha no primeiro acesso.
 | Setor | Permissões atuais |
 | --- | --- |
 | Apontamento | Seus mapas manuais, marcações, filtros, busca, legendas, importação JSON e exportações JSON/CSV. |
-| Estoque | As mesmas funções e seus Kits: materiais por unidade, associação de unidades, consumo calculado e operações atômicas com o mapa associado. |
+| Estoque | As mesmas funções e seus Kits: composição teórica por unidade, unidades aplicáveis, disponibilidade manual auxiliar e operações atômicas com o mapa associado. |
 
 ### Apontamento
 
@@ -110,7 +111,7 @@ Não acessa a Central de Kits; as regras também negam acesso aos documentos de 
 ### Estoque
 
 Dispõe das funções de Apontamento e cadastra Kits, edita seus materiais, associa
-unidades, consulta consumo calculado e abre o mapa correspondente. Renomear ou
+unidades aplicáveis, consulta composição teórica e abre o mapa correspondente. Renomear ou
 excluir um mapa de Kit ocorre pela Central de Kits. Não há entradas, saídas,
 saldo de almoxarifado ou integração com Sienge; `codigoSienge` é um campo textual.
 
@@ -292,18 +293,83 @@ Recursos preservados:
 
 ## Kits e consistência com os mapas
 
-Um Kit descreve materiais para uma unidade. Seu consumo é a quantidade por Kit
-multiplicada pelo número de unidades atendidas. Cada Kit tem um mapa associado:
+Um Kit descreve a composição teórica para executar o serviço em uma unidade.
+Cada Kit tem um mapa associado:
 criação usa lote atômico; renomeação, alteração das unidades e exclusão usam
-transações. O nome acompanha o Kit, e o contorno de utilização é independente do
+transações. O nome acompanha o Kit, e o contorno de aplicabilidade é independente do
 status pintado. As regras usam `getAfter`/`existsAfter` para rejeitar operações que
 deixem o vínculo inconsistente: nomes e listas de unidades devem coincidir, e os
 IDs devem apontar um para o outro na mesma obra e usuário. Alterar apenas uma
 marcação do mapa ou apenas os materiais do Kit não exige mudar o outro documento.
 
-O consumo é calculado na leitura, não persistido como saldo. O JSON e o CSV
+Consumo estimado e necessidade restante são calculados na leitura a partir do
+estado atual, sem persistir saldo. O JSON e o CSV
 exportam marcações, não os materiais ou as associações de unidades dos Kits;
 portanto não são backups completos da conta.
+
+## ColoredPlans e SIENGE
+
+O SIENGE continua sendo o ERP e a fonte oficial para estoque, movimentações,
+compras, requisições, custos, financeiro e demais processos empresariais. O
+ColoredPlans registra a verdade visual da execução da obra e usa a composição
+teórica dos Kits para responder o que foi executado e o que é necessário para
+continuar. Alterar uma cor ou concluir uma unidade **nunca** gera baixa, saída,
+reserva, compra ou qualquer outra movimentação de estoque.
+
+Cada material mantém um ID interno estável, descrição, unidade de medida,
+quantidade por unidade e uma referência SIENGE opcional em texto. Não são
+copiados preços, fornecedores, pedidos ou cadastros corporativos. Não existe API,
+adapter ou conexão real com o SIENGE nesta versão.
+
+O campo opcional de disponibilidade é uma **informação manual auxiliar**, editável
+somente pelo perfil Estoque como parte do Kit. A interface mostra sua origem e a
+data de atualização do Kit; ele não é chamado de estoque oficial. Ausência do
+valor significa desconhecido, enquanto zero significa disponibilidade conhecida
+igual a zero. Uma futura integração poderá fornecer o mesmo modelo de domínio,
+sem espalhar o formato externo pela interface.
+
+### Cálculos operacionais
+
+As legendas possuem uma categoria explícita: não iniciado, andamento, concluído,
+bloqueado ou outro. Cor é apenas apresentação. Legendas antigas recebem uma
+categoria de compatibilidade a partir do ID/nome até serem salvas novamente.
+
+- **Consumo estimado:** unidades atualmente concluídas × quantidade teórica por unidade.
+- **Necessidade restante:** unidades ainda não concluídas × quantidade teórica por unidade.
+- **Disponibilidade:** valor externo informado manualmente, ou desconhecido.
+- **Capacidade de continuidade:** menor quantidade inteira de unidades que todos os materiais com disponibilidade conhecida permitem executar, limitada ao restante.
+- **Déficit:** diferença entre necessidade e disponibilidade; só é afirmado quando existe valor informado.
+- **Material limitante:** material que determina a capacidade, somente quando todos os saldos estão conhecidos.
+
+Os cálculos usam o estado atual da planta, portanto reabrir uma unidade recalcula
+os valores. Histórico não é somado como consumo. Para mapas de Kit, as unidades
+selecionadas são as unidades aplicáveis ao serviço; nos demais mapas, a geometria
+atual inteira é aplicável. Percentuais e totais não são persistidos.
+
+### Pendências e responsáveis
+
+Cada unidade pode ter uma observação operacional de até 240 caracteres e um
+responsável/equipe de até 80 caracteres no contexto do mapa atual. Isso não é
+chat nem cadastro de RH. Os dados ficam em:
+
+```text
+usuarios/{uid}/obras/{obraId}/mapas/{mapaId}/contextos/{unidadeId}
+```
+
+A alteração do contexto e seu evento de histórico são gravados no mesmo lote,
+com horário do servidor e autor. Ambos os setores da própria conta podem editar;
+outras contas/obras não podem ler ou escrever. A gravação participa do indicador
+global de sincronização e usa o cache/fila do Firestore. O filtro visual mantém
+as unidades fora do resultado com opacidade reduzida e oferece “Limpar filtros”.
+
+### Compatibilidade da Fase 3
+
+O schema remoto permanece em `1`. As mudanças são aditivas: materiais antigos
+sem unidade de medida são lidos como `un`; disponibilidade ausente é `null`;
+legendas antigas recebem semântica de compatibilidade; contextos inexistentes são
+tratados como vazios. Nenhum Kit, mapa, legenda, histórico ou perfil é apagado ou
+movido. Não foi necessária migração `1 → 2`; elevar a versão sem incompatibilidade
+obrigaria uma regravação desnecessária de todos os dados.
 
 ## Confiabilidade e sincronização
 
@@ -329,7 +395,9 @@ conectividade e promises reais das operações, sem timers para simular sucesso.
 | Offline · dados locais | Navegador sem conexão ou alguma fonte ainda vem do cache. |
 | Erro ao sincronizar | Falha exige atenção; tem prioridade sobre os demais estados. |
 
-Snapshots novos não apagam falhas de gravação. O aviso oferece nova tentativa;
+Snapshots novos não apagam falhas de gravação. Apenas o aviso mais recente fica
+visível e pode ser fechado pelo X. Clique em “Erro ao sincronizar” para reabrir
+a falha pendente mais recente. O aviso oferece nova tentativa;
 não é preciso recarregar a página. Erros são classificados e traduzidos; logs
 da aplicação registram contexto/categoria, sem copiar payloads ou credenciais.
 Ao rejeitar uma gravação, o SDK desfaz o estado otimista e a falha continua visível.

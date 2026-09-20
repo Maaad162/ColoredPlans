@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { traduzirErro } from "../../services/erros";
-import type { LegendaUsuario } from "../../types/planta";
+import type { CategoriaExecucao, LegendaUsuario } from "../../types/planta";
 
 interface GerenciarLegendasProps {
   legendas: LegendaUsuario[];
   usoPorLegenda: Record<string, number>;
-  onCriar: (nome: string, cor: string) => Promise<void>;
-  onEditar: (id: string, nome: string, cor: string) => Promise<void>;
+  onCriar: (nome: string, cor: string, categoria: CategoriaExecucao) => Promise<void>;
+  onEditar: (id: string, nome: string, cor: string, categoria: CategoriaExecucao) => Promise<void>;
   onExcluir: (id: string) => Promise<void>;
   onMensagem: (mensagem: string) => void;
 }
@@ -23,6 +23,7 @@ export function GerenciarLegendas({
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [cor, setCor] = useState("#8059b6");
+  const [categoria, setCategoria] = useState<CategoriaExecucao>("outro");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -30,6 +31,7 @@ export function GerenciarLegendas({
     setEditandoId(null);
     setNome("");
     setCor("#8059b6");
+    setCategoria("outro");
     setErro(null);
   }
 
@@ -37,6 +39,7 @@ export function GerenciarLegendas({
     setEditandoId(legenda.id);
     setNome(legenda.nome);
     setCor(legenda.cor);
+    setCategoria(legenda.categoria);
     setErro(null);
   }
 
@@ -61,10 +64,10 @@ export function GerenciarLegendas({
     setErro(null);
     try {
       if (editandoId) {
-        await onEditar(editandoId, nomeNormalizado, cor);
+        await onEditar(editandoId, nomeNormalizado, cor, categoria);
         onMensagem(`Legenda “${nomeNormalizado}” atualizada.`);
       } else {
-        await onCriar(nomeNormalizado, cor);
+        await onCriar(nomeNormalizado, cor, categoria);
         onMensagem(`Legenda “${nomeNormalizado}” criada.`);
       }
       novo();
@@ -140,6 +143,11 @@ export function GerenciarLegendas({
                   <input id="legenda-cor" type="color" value={cor} onChange={(event) => setCor(event.target.value)} />
                   <code>{cor.toUpperCase()}</code>
                 </div>
+                <label htmlFor="legenda-categoria">Significado operacional</label>
+                <select id="legenda-categoria" value={categoria} onChange={(event) => setCategoria(event.target.value as CategoriaExecucao)}>
+                  <option value="nao-iniciado">Não iniciado</option><option value="andamento">Em andamento</option>
+                  <option value="concluido">Concluído</option><option value="bloqueado">Bloqueado/pendência</option><option value="outro">Outro</option>
+                </select>
                 <div className="legend-preview">
                   <span style={{ backgroundColor: cor }} aria-hidden="true" />
                   <strong>{nome.trim() || "Sua legenda"}</strong>

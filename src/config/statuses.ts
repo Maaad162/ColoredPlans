@@ -1,4 +1,14 @@
 import type { StatusConfig, StatusId } from "../types/planta";
+import type { CategoriaExecucao } from "../types/planta";
+
+export function categoriaLegada(id: string, nome: string): CategoriaExecucao {
+  const valor = `${id} ${nome}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  if (valor.includes("conclu") || valor.includes("feito") || valor.includes("finaliz")) return "concluido";
+  if (valor.includes("andamento") || valor.includes("vistoria")) return "andamento";
+  if (valor.includes("bloque") || valor.includes("pendent")) return "bloqueado";
+  if (valor.includes("nao iniciado") || valor.includes("aguardando")) return "nao-iniciado";
+  return "outro";
+}
 
 export const STATUS_SEM_MARCACAO = {
   id: "sem-marcacao" as const,
@@ -6,6 +16,7 @@ export const STATUS_SEM_MARCACAO = {
   cor: "#ffffff",
   corTexto: "#17211d",
   simbolo: "○",
+  categoria: "nao-iniciado" as const,
 };
 
 export const STATUSES: StatusConfig[] = [
@@ -15,6 +26,7 @@ export const STATUSES: StatusConfig[] = [
     cor: "#23875d",
     corTexto: "#ffffff",
     simbolo: "✓",
+    categoria: "concluido",
   },
   {
     id: "andamento",
@@ -22,6 +34,7 @@ export const STATUSES: StatusConfig[] = [
     cor: "#e7b928",
     corTexto: "#201b0b",
     simbolo: "↗",
+    categoria: "andamento",
   },
   {
     id: "pendente",
@@ -29,6 +42,7 @@ export const STATUSES: StatusConfig[] = [
     cor: "#d9574f",
     corTexto: "#ffffff",
     simbolo: "!",
+    categoria: "bloqueado",
   },
   {
     id: "vistoria",
@@ -36,6 +50,7 @@ export const STATUSES: StatusConfig[] = [
     cor: "#3979c6",
     corTexto: "#ffffff",
     simbolo: "◆",
+    categoria: "andamento",
   },
   {
     id: "outro",
@@ -43,6 +58,7 @@ export const STATUSES: StatusConfig[] = [
     cor: "#8059b6",
     corTexto: "#ffffff",
     simbolo: "•",
+    categoria: "outro",
   },
 ];
 
@@ -72,6 +88,7 @@ export function getStatus(
       cor: "#8b9690",
       corTexto: "#ffffff",
       simbolo: "?",
+      categoria: "outro" as const,
     }
   );
 }

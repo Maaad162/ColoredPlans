@@ -27,10 +27,13 @@ export function Unidade({
   onSelecionar,
 }: UnidadeProps) {
   const status = getStatus(statusId, legendas);
+  const preencherKit = mapaKit && kitUtilizado && !statusId;
+  const corPreenchimento = preencherKit ? "#08794d" : status.cor;
+  const corTexto = preencherKit ? "#ffffff" : status.corTexto;
   const usoKit = mapaKit
     ? kitUtilizado
-      ? ", Kit utilizado"
-      : ", Kit não utilizado"
+      ? ", serviço aplicável"
+      : ", serviço não aplicável"
     : "";
   const descricao = `Bloco ${unidade.bloco}, unidade ${unidade.numero}, ${status.nome}${usoKit}`;
   const centroX = unidade.x + unidade.width / 2;
@@ -63,13 +66,13 @@ export function Unidade({
         width={unidade.width}
         height={unidade.height}
         rx="1.5"
-        fill={status.cor}
+        fill={corPreenchimento}
       />
       <text
         className="unidade__numero"
         x={centroX}
         y={centroY + 3}
-        fill={status.corTexto}
+        fill={corTexto}
         textAnchor="middle"
       >
         {unidade.numero}
@@ -79,7 +82,7 @@ export function Unidade({
           className="unidade__simbolo"
           x={unidade.x + unidade.width - 4}
           y={unidade.y + 8}
-          fill={status.corTexto}
+          fill={corTexto}
           textAnchor="end"
           aria-hidden="true"
         >

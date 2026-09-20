@@ -1,8 +1,9 @@
 import type { SchemaVersion } from "../config/dados";
 
 export type StatusId = string;
+export type CategoriaExecucao = "nao-iniciado" | "andamento" | "concluido" | "bloqueado" | "outro";
 
-export type StatusFilter = StatusId | "sem-marcacao" | "todos";
+export type StatusFilter = StatusId | `categoria:${CategoriaExecucao}` | "sem-marcacao" | "todos";
 
 export type FerramentaPintura = StatusId | "sem-marcacao";
 
@@ -12,6 +13,7 @@ export interface StatusConfig {
   cor: string;
   corTexto: string;
   simbolo: string;
+  categoria: CategoriaExecucao;
 }
 
 /** Setor provisionado administrativamente; não é escolhido pelo usuário final. */
@@ -53,6 +55,8 @@ export interface MaterialKit {
   descricao: string;
   detalhe: string;
   quantidadePorKit: number;
+  unidadeMedida: string;
+  disponibilidadeManual: number | null;
 }
 
 export interface Kit {
@@ -66,6 +70,7 @@ export interface Kit {
   unidadeIds: string[];
   criadoEm: string;
   atualizadoEm: string;
+  atualizadoPor: string;
 }
 
 export interface Unidade {
@@ -101,6 +106,21 @@ export interface MapaServico {
   kitUnidadeIds: string[];
   marcacoes: Marcacoes;
   criadoEm: string;
+}
+
+export interface ContextoUnidade {
+  unidadeId: string;
+  observacao: string;
+  responsavel: string;
+  atualizadoEm: string | null;
+  atualizadoPor: string;
+}
+
+export interface DisponibilidadeMaterial {
+  materialId: string;
+  quantidade: number;
+  fonte: "manual" | "sienge";
+  atualizadoEm: string | null;
 }
 
 export interface EstadoMapas {
