@@ -544,10 +544,10 @@
 }
 
 .toolbar {
-  display: grid;
-  grid-template-columns: auto minmax(300px, 1fr) minmax(220px, 1fr);
-  align-items: end;
-  gap: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
   padding: 13px 15px;
   margin-bottom: 18px;
   background: var(--surface);
@@ -565,10 +565,18 @@
   align-items: center;
 }
 
-.toolbar__filtros { gap: 9px; }
-.toolbar__acoes { gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.toolbar__filtros { flex: 2 1 300px; min-width: 0; gap: 9px; flex-wrap: wrap; align-items: flex-end; }
+.toolbar__filtros .select-field { flex: 1 1 130px; min-width: 0; }
+.toolbar__filtros .select-field select { width: 100%; min-width: 0; }
+.toolbar__filtros .select-field__control svg { flex-shrink: 0; }
+.toolbar__acoes { flex: 2 1 420px; min-width: 0; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.toolbar__acoes .action-menu { flex: 1 1 280px; min-width: 0; }
+.toolbar__acoes .action-menu .button { flex: 1 1 auto; }
+.toolbar__acoes .zoom-control { flex-shrink: 0; }
 .action-menu { gap: 7px; }
-.toolbar__pincel { gap: 8px; align-self: center; justify-content: center; }
+.toolbar__pincel { flex: 1 1 230px; min-width: 0; flex-wrap: wrap; gap: 8px; align-self: center; justify-content: flex-start; }
+.toolbar__pincel .paleta--compacta { flex-wrap: wrap; min-width: 0; }
+.toolbar__pincel .paleta__opcao { flex-shrink: 0; }
 .toolbar__label { gap: 6px; color: #57665e; font-size: 11px; font-weight: 700; white-space: nowrap; }
 
 .select-field label {
@@ -949,14 +957,7 @@
   from { opacity: 0; transform: translate(-50%, 8px); }
 }
 
-@media (max-width: 1260px) {
-  .toolbar { grid-template-columns: 1fr auto; }
-  .toolbar__pincel { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
-}
-
 @media (max-width: 980px) {
-  .toolbar { grid-template-columns: 1fr; align-items: start; }
-  .toolbar__pincel { grid-column: auto; grid-row: auto; justify-content: flex-start; }
   .toolbar__acoes { justify-content: space-between; }
   .workspace { grid-template-columns: 1fr; }
   .sidebar { grid-template-columns: 1fr 1fr; padding-top: 0; }
