@@ -75,7 +75,7 @@ export function Unidade({
         fill={corTexto}
         textAnchor="middle"
       >
-        {unidade.numero}
+        {unidade.label ?? unidade.numero}
       </text>
       {statusId && (
         <text

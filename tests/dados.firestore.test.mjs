@@ -17,6 +17,7 @@ test("fundação: preservação dos dados e inicialização concorrente", async 
       await setDoc(doc(contexto.firestore(), `usuarios/${uid}`), {
         userId: uid, tipoConta: "estoque", schemaVersion: CURRENT_SCHEMA_VERSION,
       });
+      for (const id of [obraId, "outra-obra", "obra-material"]) await setDoc(doc(contexto.firestore(), `usuarios/${uid}/obras/${id}`), { userId: uid, nome: id, schemaVersion: 0 });
     });
     const db = ambiente.authenticatedContext(uid).firestore();
 
@@ -125,7 +126,7 @@ test("fundação: preservação dos dados e inicialização concorrente", async 
       await assert.rejects(migrarObra(db, uid, obra, true), /Materiais inválidos/);
       assert.deepEqual((await getDocFromServer(kit)).data(), antesKit);
       assert.deepEqual((await getDocFromServer(mapa)).data(), antesMapa);
-      assert.equal((await getDocFromServer(referenciaObra)).exists(), false);
+      assert.equal((await getDocFromServer(referenciaObra)).data().schemaVersion, 0);
       await ambiente.withSecurityRulesDisabled(async (contexto) => {
         await updateDoc(doc(contexto.firestore(), kit.path), { materiais: [material, { ...material, id: "b" }] });
       });

@@ -132,3 +132,12 @@ test('operações simultâneas só sincronizam depois da última confirmação',
   concluir(); await primeira;
   assert.equal(controle.getSnapshot().estado, 'sincronizado');
 });
+
+test('reabrir prioriza gravação pendente mesmo quando a leitura se recupera', async () => {
+  const controle = new Sincronizacao();
+  await assert.rejects(controle.executar('obra-a:mapa', async () => { throw { code: 'permission-denied' }; }));
+  controle.falharLeitura('mapas', { code: 'unavailable' }, () => {});
+  controle.reabrirAviso();
+  controle.observar('mapas', { fromCache: false, hasPendingWrites: false });
+  assert.equal(controle.getSnapshot().aviso.chave, 'obra-a:mapa');
+});

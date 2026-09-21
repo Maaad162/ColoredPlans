@@ -5,14 +5,14 @@ import { useControleSync } from "./useSincronizacao";
 import type { ContextoUnidade, MapaServico } from "../types/planta";
 
 const vazio = (unidadeId = ""): ContextoUnidade => ({ unidadeId, observacao: "", responsavel: "", atualizadoEm: null, atualizadoPor: "" });
-export function useContextoUnidade(uid: string, obraId: string, mapa: MapaServico | undefined, unidadeId: string | undefined, contextoConhecido?: ContextoUnidade) {
+export function useContextoUnidade(uid: string, obraId: string, mapa: MapaServico | undefined, unidadeId: string | undefined, contextoConhecido?: ContextoUnidade, unidades?: readonly string[]) {
   const controle = useControleSync();
   const [contexto, setContexto] = useState(() => vazio(unidadeId));
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
     if (!mapa || !unidadeId) { setContexto(vazio()); return; }
     if (contextoConhecido) { setContexto(contextoConhecido); return; }
-    const chave = `contexto:${mapa.id}:${unidadeId}`;
+    const chave = `contexto:${obraId}:${mapa.id}:${unidadeId}`;
     controle.observar(chave, { fromCache: true, hasPendingWrites: false });
     const cancelar = observarContexto(db, uid, obraId, mapa.id, unidadeId, (atual, metadata) => { setContexto(atual); controle.observar(chave, metadata); },
       erro => controle.falharLeitura(chave, erro, () => setTentativa(v => v + 1)));
@@ -20,7 +20,7 @@ export function useContextoUnidade(uid: string, obraId: string, mapa: MapaServic
   }, [uid, obraId, mapa, unidadeId, contextoConhecido, controle, tentativa]);
   return { contexto, salvar: (observacao: string, responsavel: string) => {
     if (!mapa || !unidadeId) return Promise.resolve();
-    return controle.executar(`contexto:${mapa.id}:${unidadeId}`, () => salvarContexto(db, uid, obraId, mapa, unidadeId, contexto, { observacao, responsavel }), `Contexto da unidade ${unidadeId}`);
+    return controle.executar(`contexto:${obraId}:${mapa.id}:${unidadeId}`, () => salvarContexto(db, uid, obraId, mapa, unidadeId, contexto, { observacao, responsavel }, unidades), `Contexto da unidade ${unidadeId}`);
   } };
 }
 
@@ -30,7 +30,7 @@ export function useContextosMapa(uid: string, obraId: string, mapa: MapaServico 
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
     if (!mapa) { setContextos([]); return; }
-    const chave = `contextos:${mapa.id}`;
+    const chave = `contextos:${obraId}:${mapa.id}`;
     controle.observar(chave, { fromCache: true, hasPendingWrites: false });
     const cancelar = observarContextosMapa(db, uid, obraId, mapa.id, (atuais, metadata) => { setContextos(atuais); controle.observar(chave, metadata); },
       erro => controle.falharLeitura(chave, erro, () => setTentativa(v => v + 1)));

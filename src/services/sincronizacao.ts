@@ -12,7 +12,7 @@ export function calcularEstadoSync(online: boolean, fontes: MetadadosSync[], pen
   return "sincronizado";
 }
 
-// Um controlador por sessão/obra. Promises continuam acompanhadas mesmo quando
+// Um controlador por sessão; fontes e operações identificam seu contexto. Promises continuam acompanhadas mesmo quando
 // um modal fecha; snapshots nunca apagam falhas de gravação.
 export class Sincronizacao {
   private fontes = new Map<string, MetadadosSync>();
@@ -34,7 +34,11 @@ export class Sincronizacao {
   }
   conectar(online: boolean) { this.online = online; this.publicar(); }
   fecharAviso() { this.aviso = null; this.publicar(); }
-  reabrirAviso() { this.aviso = [...this.falhas.values()].at(-1) ?? null; this.publicar(); }
+  reabrirAviso() {
+    const recentes = [...this.falhas.values()].reverse();
+    this.aviso = recentes.find(falha => !falha.chave.startsWith("leitura:")) ?? recentes[0] ?? null;
+    this.publicar();
+  }
   private registrarFalha(falha: FalhaSync) {
     this.falhas.delete(falha.chave);
     this.falhas.set(falha.chave, falha);

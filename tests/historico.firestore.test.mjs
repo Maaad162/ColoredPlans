@@ -14,7 +14,10 @@ test('histórico operacional: serviços reais, atomicidade e permissões', async
   try {
     await ambiente.clearFirestore();
     await ambiente.withSecurityRulesDisabled(async c => {
-      for (const role of ['apontamento', 'estoque']) await setDoc(doc(c.firestore(), `usuarios/${role}`), { userId: role, tipoConta: role, schemaVersion: 1 });
+      for (const role of ['apontamento', 'estoque']) {
+        await setDoc(doc(c.firestore(), `usuarios/${role}`), { userId: role, tipoConta: role, schemaVersion: 1 });
+        await setDoc(doc(c.firestore(), `usuarios/${role}/obras/${obraId}`), { userId: role, nome: "Obra hist?rica", schemaVersion: 1 });
+      }
     });
     for (const uid of ['apontamento', 'estoque']) await t.test(`${uid}: ciclo do mapa e uma ação agrupada geram eventos consistentes`, async () => {
       const db = ambiente.authenticatedContext(uid).firestore();
@@ -82,6 +85,8 @@ test('histórico operacional: serviços reais, atomicidade e permissões', async
         await assertFails(setDoc(doc(intruso, evento.ref.path), evento.data()));
       }
       const consultaOutra = query(historicoCollection(db, uid, 'obra-vazia'), where('userId', '==', uid), where('obraId', '==', 'obra-vazia'));
+      await assertFails(getDocs(consultaOutra));
+      await ambiente.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `usuarios/${uid}/obras/obra-vazia`), { userId: uid, nome: 'Obra vazia', schemaVersion: 1 }));
       assert.equal((await assertSucceeds(getDocs(consultaOutra))).size, 0);
     });
     await t.test('criação com ID existente não sobrescreve marcações', async () => {

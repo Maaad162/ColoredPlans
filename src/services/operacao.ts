@@ -6,6 +6,7 @@ export interface ResumoExecucao {
 export interface NecessidadeMaterial {
   materialId: string; descricao: string; codigoSienge: string; unidadeMedida: string;
   quantidadePorUnidade: number; consumoEstimado: number; necessidadeRestante: number;
+  fonte: "manual" | "sienge" | null; atualizadoEm: string | null;
   disponibilidade: number | null; deficit: number | null; capacidade: number | null;
 }
 export interface ResumoMateriais {
@@ -37,7 +38,8 @@ export function calcularResumoMateriais(kit: Kit, execucao: ResumoExecucao, disp
     const capacidadeBruta = informada === null ? null : Math.floor(informada / material.quantidadePorKit);
     const capacidade = capacidadeBruta === null ? null : Math.min(execucao.restantes, capacidadeBruta);
     const item: NecessidadeMaterial = { materialId: material.id, descricao: material.descricao, codigoSienge: material.codigoSienge,
-      unidadeMedida: material.unidadeMedida, quantidadePorUnidade: material.quantidadePorKit,
+      unidadeMedida: material.unidadeMedida, fonte: informada === null ? null : porMaterial.get(material.id)?.fonte ?? "manual",
+      atualizadoEm: porMaterial.get(material.id)?.atualizadoEm ?? kit.atualizadoEm ?? null, quantidadePorUnidade: material.quantidadePorKit,
       consumoEstimado: arredondar(execucao.concluidas * material.quantidadePorKit),
       necessidadeRestante: arredondar(execucao.restantes * material.quantidadePorKit), disponibilidade: informada,
       deficit: informada === null ? null : arredondar(Math.max(0, execucao.restantes * material.quantidadePorKit - informada)), capacidade };

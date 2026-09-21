@@ -97,7 +97,7 @@ export function Toolbar({
                 <option key={status.id} value={status.id}>{status.nome}</option>
               ))}
               </optgroup>
-              <option value="sem-marcacao">Sem marcação</option>
+              <option value="sem-marcacao">Sem marcação</option><option value="restantes">Ainda não concluídas</option>
             </select>
           </div>
         </div>

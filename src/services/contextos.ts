@@ -31,9 +31,9 @@ export function observarContextosMapa(banco: Firestore, uid: string, obraId: str
     snapshot => atualizar(snapshot.docs.map(item => converterContexto(item.id, item.data())), snapshot.metadata), falhar);
 }
 export function salvarContexto(banco: Firestore, uid: string, obraId: string, mapa: MapaServico, unidadeId: string,
-  anterior: Pick<ContextoUnidade, "observacao" | "responsavel">, proximo: Pick<ContextoUnidade, "observacao" | "responsavel">) {
+  anterior: Pick<ContextoUnidade, "observacao" | "responsavel">, proximo: Pick<ContextoUnidade, "observacao" | "responsavel">, unidades: readonly string[] = Object.keys(UNIDADE_BY_ID)) {
   const observacao = proximo.observacao.trim(), responsavel = proximo.responsavel.trim();
-  if (!UNIDADE_BY_ID[unidadeId] || mapa.userId !== uid || mapa.obraId !== obraId) throw new ErroOperacional("permissao", "Unidade, mapa ou obra inválidos.");
+  if (!unidades.includes(unidadeId) || mapa.userId !== uid || mapa.obraId !== obraId) throw new ErroOperacional("permissao", "Unidade, mapa ou obra inválidos.");
   if (observacao.length > CONTEXTO_OBSERVACAO_LIMITE || responsavel.length > CONTEXTO_RESPONSAVEL_LIMITE) {
     throw new ErroOperacional("validacao", "A observação ou o responsável ultrapassa o limite permitido.");
   }
@@ -41,10 +41,11 @@ export function salvarContexto(banco: Firestore, uid: string, obraId: string, ma
   const referencia = contextoDocument(banco, uid, obraId, mapa.id, unidadeId);
   const evento = doc(historicoCollection(banco, uid, obraId));
   const lote = writeBatch(banco);
-  lote.set(referencia, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, mapaId: mapa.id, unidadeId,
+  const escopoPlanta = mapa.plantaId ? { plantaId: mapa.plantaId } : {};
+  lote.set(referencia, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, ...escopoPlanta, mapaId: mapa.id, unidadeId,
     observacao, responsavel, atualizadoEm: serverTimestamp(), atualizadoPor: uid, ultimoEventoId: evento.id });
-  lote.set(evento, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, mapaId: mapa.id, mapaNome: mapa.nome,
-    acao: "contexto", unidadeIds: [unidadeId], antes: anterior, depois: { observacao, responsavel },
+  lote.set(evento, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, ...escopoPlanta, mapaId: mapa.id, mapaNome: mapa.nome,
+    acao: "contexto", unidadeIds: [unidadeId], antes: { observacao: anterior.observacao, responsavel: anterior.responsavel }, depois: { observacao, responsavel },
     nomeAnterior: mapa.nome, nomeAtual: mapa.nome, criadoEm: serverTimestamp() });
   return lote.commit();
 }

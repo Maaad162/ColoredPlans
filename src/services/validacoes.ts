@@ -7,8 +7,8 @@ export function validarLegenda(nome: string, cor: string) {
     throw new ErroOperacional("validacao", "Informe uma legenda de até 48 caracteres e uma cor válida.");
   }
 }
-export function validarUnidadesKit(valor: unknown): string[] {
-  if (!Array.isArray(valor) || valor.length > 100 || !valor.every((id: unknown) => typeof id === "string" && Boolean(UNIDADE_BY_ID[id]))
+export function validarUnidadesKit(valor: unknown, unidades: readonly string[] = Object.keys(UNIDADE_BY_ID)): string[] {
+  if (!Array.isArray(valor) || valor.length > unidades.length || !valor.every((id: unknown) => typeof id === "string" && unidades.includes(id))
     || new Set(valor).size !== valor.length) throw new ErroOperacional("validacao", "As unidades do Kit são inválidas ou repetidas. Nenhuma unidade foi descartada.");
   return [...valor];
 }

@@ -13,6 +13,7 @@ test('contexto operacional é atômico, isolado e protegido pelas regras', async
     await ambiente.withSecurityRulesDisabled(async c => {
       for (const role of ['apontamento', 'estoque', 'outro']) {
         await setDoc(doc(c.firestore(), `usuarios/${role}`), { userId: role, tipoConta: role === 'outro' ? 'apontamento' : role, schemaVersion: 1 });
+        await setDoc(doc(c.firestore(), `usuarios/${role}/obras/${obraId}`), { userId: role, nome: "Obra contexto", schemaVersion: 1 });
         await setDoc(doc(c.firestore(), `usuarios/${role}/obras/${obraId}/mapas/hidraulica`), mapa(role));
       }
     });

@@ -1,6 +1,8 @@
 import {
   Timestamp,
   deleteDoc,
+  collection,
+  getDocsFromServer,
   doc,
   onSnapshot,
   query,
@@ -13,7 +15,8 @@ import {
 } from "firebase/firestore";
 import { categoriaLegada, corTextoParaFundo, simboloDaLegenda } from "../config/statuses";
 import { CURRENT_SCHEMA_VERSION, lerSchemaVersion } from "../config/dados";
-import { legendasCollection } from "./caminhos";
+import { ErroOperacional } from "./erros";
+import { legendasCollection, perfilDocument, mapasCollection } from "./caminhos";
 import type { CategoriaExecucao, LegendaUsuario } from "../types/planta";
 import { validarCategoriaExecucao, validarLegenda } from "./validacoes";
 
@@ -106,6 +109,11 @@ export function editarLegendaRemota(
   });
 }
 
-export function excluirLegendaRemota(usuarioId: string, legendaId: string) {
+export async function excluirLegendaRemota(usuarioId: string, legendaId: string) {
+  const obras = await getDocsFromServer(query(collection(perfilDocument(usuarioId), "obras"), where("userId", "==", usuarioId)));
+  for (const obra of obras.docs) {
+    const mapas = await getDocsFromServer(query(mapasCollection(usuarioId, obra.id), where("userId", "==", usuarioId)));
+    if (mapas.docs.some(m => Object.values(m.data().marcacoes ?? {}).includes(legendaId))) throw new ErroOperacional("validacao", "Esta legenda está em uso em uma planta da obra " + obra.data().nome + ".");
+  }
   return deleteDoc(doc(legendasCollection(usuarioId), legendaId));
 }

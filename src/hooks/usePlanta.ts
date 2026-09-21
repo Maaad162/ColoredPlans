@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useControleSync } from "./useSincronizacao";
+import { gravarComHistorico } from "../services/historico";
 import { ErroOperacional } from "../services/erros";
-import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../data/planta";
+import { idsDaPlanta, unidadesDaPlanta } from "../services/geometria";
+import type { PlantaDefinition, PlantaObra } from "../types/planta";
 import {
   atualizarStatusRemoto,
   criarMapaRemoto,
@@ -44,13 +46,18 @@ export function usePlanta(
   usuarioId: string,
   obra: Obra,
   legendas: StatusConfig[],
+  instancia: PlantaObra,
+  definicao: PlantaDefinition,
   habilitarKits = false,
 ) {
   const controle = useControleSync();
+  const UNIDADES = useMemo(() => unidadesDaPlanta(definicao), [definicao]);
+  const UNIDADE_BY_ID = useMemo(() => Object.fromEntries(UNIDADES.map(u => [u.id, u])), [UNIDADES]);
+  const unidadeIds = useMemo(() => idsDaPlanta(definicao), [definicao]);
   const [tentativa, setTentativa] = useState(0);
   const mapasAtuais = useRef<EstadoMapas["abas"]>([]);
   const [estadoMapas, setEstadoMapas] = useState<EstadoMapas>(() => ({
-    abaAtivaId: carregarAbaAtiva(usuarioId, obra.id) ?? "",
+    abaAtivaId: carregarAbaAtiva(usuarioId, `${obra.id}:${instancia.id}`) ?? carregarAbaAtiva(usuarioId, obra.id) ?? "",
     abas: [],
   }));
   const mapaInicialEmCriacao = useRef(false);
@@ -74,8 +81,8 @@ export function usePlanta(
   }, []);
 
   const gravar = useCallback((operacao: () => Promise<void>, rotulo = "Alteração no mapa") => {
-    controle.enfileirar(`mapas:${crypto.randomUUID()}`, operacao, rotulo);
-  }, [controle]);
+    controle.enfileirar(`mapas:${crypto.randomUUID()}`, operacao, `${obra.nome} / ${instancia.nome} / ${rotulo}`);
+  }, [controle, obra.nome, instancia.nome]);
   const registrarErro = useCallback((erro: unknown) => {
     controle.falharLeitura("mapas", erro, () => setTentativa(v => v + 1));
   }, [controle]);
@@ -83,7 +90,7 @@ export function usePlanta(
   useEffect(() => {
     if (
       statusFiltro !== "todos" &&
-      statusFiltro !== "sem-marcacao" &&
+      statusFiltro !== "sem-marcacao" && statusFiltro !== "restantes" &&
       !filtroCategoriaValido(statusFiltro) &&
       !legendas.some((legenda) => legenda.id === statusFiltro)
     ) {
@@ -100,9 +107,9 @@ export function usePlanta(
 
   useEffect(() => {
     if (estadoMapas.abaAtivaId) {
-      salvarAbaAtiva(usuarioId, obra.id, estadoMapas.abaAtivaId);
+      salvarAbaAtiva(usuarioId, `${obra.id}:${instancia.id}`, estadoMapas.abaAtivaId);
     }
-  }, [estadoMapas.abaAtivaId, usuarioId, obra.id]);
+  }, [estadoMapas.abaAtivaId, usuarioId, obra.id, instancia.id]);
 
   useEffect(() => {
     let ativo = true;
@@ -124,7 +131,7 @@ export function usePlanta(
             if (!criarInicial || metadata.fromCache || metadata.hasPendingWrites) return;
             if (!mapaInicialEmCriacao.current) {
               mapaInicialEmCriacao.current = true;
-              gravar(() => garantirMapaInicial(db, usuarioId, obra.id).catch((erro) => {
+              gravar(() => garantirMapaInicial(db, usuarioId, obra.id, instancia.id).catch((erro) => {
                 mapaInicialEmCriacao.current = false;
                 throw erro;
               }));
@@ -142,13 +149,15 @@ export function usePlanta(
             abas: mapasRemotos,
           }));
         },
-        registrarErro,
+        registrarErro, instancia.id, definicao,
       );
     }
 
     // O cache permanece acessível mesmo se uma migração aguardar a conexão.
     iniciarObservacao(false);
-    if (online) {
+    if (obra.schemaVersion === CURRENT_SCHEMA_VERSION) {
+      iniciarObservacao(true);
+    } else if (online) {
       controle.observar("preparacao", { fromCache: true, hasPendingWrites: false });
       void migrarObra(db, usuarioId, obra, habilitarKits)
         .then(() => { if (ativo) { controle.remover("preparacao"); iniciarObservacao(true); } })
@@ -162,7 +171,7 @@ export function usePlanta(
       cancelarObservacao?.();
       controle.remover("mapas"); controle.remover("preparacao");
     };
-  }, [habilitarKits, usuarioId, obra, online, gravar, registrarErro, controle, tentativa]);
+  }, [habilitarKits, usuarioId, obra, online, gravar, registrarErro, controle, tentativa, instancia.id, definicao]);
 
 
   const abaAtual =
@@ -184,7 +193,7 @@ export function usePlanta(
       else resultado["sem-marcacao"] += 1;
     }
     return resultado;
-  }, [legendas, marcacoes]);
+  }, [legendas, marcacoes, UNIDADES]);
 
   const usoPorLegenda = useMemo(() => {
     const resultado: Record<string, number> = {};
@@ -210,24 +219,24 @@ export function usePlanta(
         id,
         ferramenta === "sem-marcacao" ? null : ferramenta,
         usuarioId,
-        obra.id,
+        obra.id, unidadeIds,
       ), `Unidade ${id} · ${abaAtual.nome}`);
     }
   }
 
   function definirStatus(id: string, status: StatusId | null) {
     if (!abaAtual || !UNIDADE_BY_ID[id] || (status && !legendas.some(l => l.id === status))) return;
-    gravar(() => atualizarStatusRemoto(obterMapa(abaAtual.id), id, status, usuarioId, obra.id), `Unidade ${id} · ${abaAtual.nome}`);
+    gravar(() => atualizarStatusRemoto(obterMapa(abaAtual.id), id, status, usuarioId, obra.id, unidadeIds), `Unidade ${id} · ${abaAtual.nome}`);
   }
 
   function limparTudo() {
     if (!abaAtual) return;
-    gravar(() => substituirMarcacoesRemotas(obterMapa(abaAtual.id), {}, usuarioId, obra.id), `Limpeza · ${abaAtual.nome}`);
+    gravar(() => substituirMarcacoesRemotas(obterMapa(abaAtual.id), {}, usuarioId, obra.id, unidadeIds), `Limpeza · ${abaAtual.nome}`);
   }
 
   function substituirMarcacoes(novas: Marcacoes) {
     if (!abaAtual) return;
-    gravar(() => substituirMarcacoesRemotas(obterMapa(abaAtual.id), novas, usuarioId, obra.id), `Importação · ${abaAtual.nome}`);
+    gravar(() => substituirMarcacoesRemotas(obterMapa(abaAtual.id), novas, usuarioId, obra.id, unidadeIds), `Importação · ${abaAtual.nome}`);
     setUnidadeSelecionadaId(null);
   }
 
@@ -253,7 +262,7 @@ export function usePlanta(
       .slice(2, 7)}`;
     const novaAba = {
       schemaVersion: CURRENT_SCHEMA_VERSION,
-      obraId: obra.id,
+      obraId: obra.id, plantaId: instancia.id,
       id,
       nome: nomeNormalizado,
       userId: usuarioId,
@@ -303,18 +312,20 @@ export function usePlanta(
       blocoFiltro !== "todos" && unidade.bloco !== blocoFiltro;
     const statusNaoCorresponde =
       statusFiltro !== "todos" &&
-      (statusFiltro === "sem-marcacao"
+      (statusFiltro === "restantes" ? (status ? legendas.find(item => item.id === status)?.categoria : null) === "concluido"
+        : statusFiltro === "sem-marcacao"
         ? status !== null
         : statusFiltro.startsWith("categoria:")
           ? (status ? legendas.find(item => item.id === status)?.categoria ?? "outro" : "nao-iniciado") !== statusFiltro.slice(10)
           : status !== statusFiltro);
-    return blocoNaoCorresponde || statusNaoCorresponde;
+    return (abaAtual?.tipo === "kit" && !abaAtual.kitUnidadeIds.includes(id)) || blocoNaoCorresponde || statusNaoCorresponde;
   }
 
   return {
-    blocos: BLOCOS,
+    blocos: definicao.blocos,
     unidades: UNIDADES,
     statuses: legendas,
+    definirEquipe: (equipeId: string) => { if (abaAtual) gravar(() => gravarComHistorico(db, usuarioId, obra.id, { acao: "equipe", mapa: obterMapa(abaAtual.id), equipeId }), `Equipe · ${abaAtual.nome}`); },
     abas: estadoMapas.abas,
     abaAtual,
     marcacoes,

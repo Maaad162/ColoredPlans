@@ -11,17 +11,19 @@ import { db } from "../config/firebase";
 import { gravarComHistorico, validarMarcacoes } from "./historico";
 import { ErroOperacional } from "./erros";
 import { mapasCollection } from "./caminhos";
-import { UNIDADE_BY_ID } from "../data/planta";
+import { DEFINICAO_LEGADA, idsDaPlanta, plantaDoDocumento, PLANTA_LEGADA_ID } from "./geometria";
+import type { PlantaDefinition } from "../types/planta";
+import { validarUnidadesKit } from "./validacoes";
 import type { MapaServico, Marcacoes, StatusId } from "../types/planta";
 
-function normalizarMarcacoes(valor: unknown): Marcacoes {
+function normalizarMarcacoes(valor: unknown, unidades: string[]): Marcacoes {
   if (!valor || typeof valor !== "object" || Array.isArray(valor)) throw new ErroOperacional("validacao", "Este mapa contém marcações inválidas. Solicite revisão ao responsável.");
   const marcacoes: Marcacoes = {};
   for (const [id, status] of Object.entries(valor)) {
     if (status !== null && typeof status !== "string") throw new ErroOperacional("validacao", "Este mapa contém um estado inválido. Solicite revisão ao responsável.");
     marcacoes[id] = status;
   }
-  validarMarcacoes(marcacoes);
+  validarMarcacoes(marcacoes, unidades);
   return marcacoes;
 }
 
@@ -30,13 +32,16 @@ export function observarMapas(
   obraId: string,
   aoAtualizar: (mapas: MapaServico[], metadata: SnapshotMetadata) => void,
   aoFalhar: (erro: Error) => void,
+  plantaId = PLANTA_LEGADA_ID,
+  definicao: PlantaDefinition = DEFINICAO_LEGADA,
 ): Unsubscribe {
   return onSnapshot(
-    query(mapasCollection(usuarioId, obraId), where("userId", "==", usuarioId)),
+    query(mapasCollection(usuarioId, obraId), where("userId", "==", usuarioId), ...(plantaId === PLANTA_LEGADA_ID ? [] : [where("plantaId", "==", plantaId)])),
     { includeMetadataChanges: true },
     (snapshot) => {
       try {
         const mapas = snapshot.docs
+          .filter(documento => plantaDoDocumento(documento.data().plantaId) === plantaId)
           .map((documento) => {
             const data = documento.data();
             const criadoEm =
@@ -49,24 +54,17 @@ export function observarMapas(
                 : undefined;
             return {
               id: documento.id,
-              obraId,
+              obraId, plantaId, equipeId: typeof data.equipeId === "string" ? data.equipeId : "",
               schemaVersion: lerSchemaVersion(data.schemaVersion),
               userId: usuarioId,
               tipo: kitId ? "kit" : "manual",
               ...(kitId ? { kitId } : {}),
-              kitUnidadeIds: Array.isArray(data.kitUnidadeIds)
-                ? [...new Set(
-                    data.kitUnidadeIds.filter(
-                      (id): id is string =>
-                        typeof id === "string" && Boolean(UNIDADE_BY_ID[id]),
-                    ),
-                  )]
-                : [],
+              kitUnidadeIds: validarUnidadesKit(data.kitUnidadeIds ?? [], idsDaPlanta(definicao)),
               nome:
                 typeof data.nome === "string" && data.nome.trim()
                   ? data.nome
                   : "Mapa sem nome",
-              marcacoes: normalizarMarcacoes(data.marcacoes),
+              marcacoes: normalizarMarcacoes(data.marcacoes, idsDaPlanta(definicao)),
               criadoEm,
             } satisfies MapaServico;
           })
@@ -98,8 +96,9 @@ export function atualizarStatusRemoto(
   status: StatusId | null,
   usuarioId: string,
   obraId: string,
+  unidades: readonly string[] = idsDaPlanta(DEFINICAO_LEGADA),
 ) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "unidade", mapa, unidadeId, status });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "unidade", mapa, unidadeId, status }, unidades);
 }
 
 export function substituirMarcacoesRemotas(
@@ -107,6 +106,7 @@ export function substituirMarcacoesRemotas(
   marcacoes: Marcacoes,
   usuarioId: string,
   obraId: string,
+  unidades: readonly string[] = idsDaPlanta(DEFINICAO_LEGADA),
 ) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "marcacoes", mapa, marcacoes });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "marcacoes", mapa, marcacoes }, unidades);
 }

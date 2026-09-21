@@ -9,6 +9,7 @@ import "./Planta.css";
 
 interface PlantaProps {
   blocos: BlocoType[];
+  definicao: import("../../types/planta").PlantaDefinition;
   marcacoes: Marcacoes;
   legendas: StatusConfig[];
   selecionadaId: string | null;
@@ -28,6 +29,7 @@ interface PanState {
 }
 
 export function Planta({
+  definicao,
   blocos,
   marcacoes,
   legendas,
@@ -88,10 +90,11 @@ export function Planta({
       <div className="planta-scale" style={{ width: `${zoom * 100}%` }}>
         <svg
           className="planta-svg"
-          viewBox="0 0 1120 690"
+          viewBox={`0 0 ${definicao.width} ${definicao.height}`}
           role="group"
-          aria-label="100 unidades distribuídas em sete blocos"
+          aria-label={`${blocos.reduce((total, bloco) => total + bloco.unidades.length, 0)} unidades distribuídas em ${blocos.length} blocos`}
         >
+          {definicao.decoracao === "original" && <>
           <rect className="planta__papel" x="8" y="8" width="1104" height="674" rx="12" />
           <path
             className="planta__limite"
@@ -142,6 +145,7 @@ export function Planta({
             <text x="287" y="595" textAnchor="middle">PARQUE INFANTIL</text>
           </g>
 
+          </>}
           {blocos.map((bloco) => (
             <Bloco
               key={bloco.id}
@@ -156,10 +160,10 @@ export function Planta({
             />
           ))}
 
-          <g className="norte" transform="translate(1075 92)">
+          {definicao.decoracao === "original" && <g className="norte" transform="translate(1075 92)">
             <path d="M0 34 12 0l12 34-12-7Z" />
             <text x="12" y="49" textAnchor="middle">N</text>
-          </g>
+          </g>}
         </svg>
       </div>
     </div>

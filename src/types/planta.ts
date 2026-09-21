@@ -3,7 +3,7 @@ import type { SchemaVersion } from "../config/dados";
 export type StatusId = string;
 export type CategoriaExecucao = "nao-iniciado" | "andamento" | "concluido" | "bloqueado" | "outro";
 
-export type StatusFilter = StatusId | `categoria:${CategoriaExecucao}` | "sem-marcacao" | "todos";
+export type StatusFilter = StatusId | `categoria:${CategoriaExecucao}` | "sem-marcacao" | "todos" | "restantes";
 
 export type FerramentaPintura = StatusId | "sem-marcacao";
 
@@ -25,9 +25,29 @@ export function tipoContaValido(valor: unknown): valor is TipoConta {
 
 /** Entidade de execução à qual os mapas se referem, independente do usuário. */
 export interface Obra {
+  schemaVersion?: SchemaVersion;
   id: string;
   nome: string;
+  status?: "ativa" | "arquivada";
+  plantaLegada?: boolean;
 }
+
+export interface PlantaDefinition {
+  schemaVersion: 1;
+  nome: string;
+  width: number;
+  height: number;
+  decoracao?: "original";
+  blocos: Bloco[];
+}
+
+export interface PlantaObra {
+  id: string;
+  nome: string;
+  templateId: string;
+}
+
+export interface Equipe { id: string; nome: string }
 
 /**
  * Representação de leitura de usuarios/{uid} na aplicação.
@@ -60,6 +80,7 @@ export interface MaterialKit {
 }
 
 export interface Kit {
+  plantaId?: string;
   schemaVersion: SchemaVersion;
   obraId: string;
   id: string;
@@ -75,6 +96,7 @@ export interface Kit {
 
 export interface Unidade {
   id: string;
+  label?: string;
   bloco: string;
   numero: string;
   x: number;
@@ -96,6 +118,8 @@ export interface Bloco {
 export type Marcacoes = Record<string, StatusId | null>;
 
 export interface MapaServico {
+  plantaId?: string;
+  equipeId?: string;
   schemaVersion: SchemaVersion;
   obraId: string;
   id: string;
@@ -129,16 +153,26 @@ export interface EstadoMapas {
 }
 
 export interface UnidadeExportada {
+  id?: string;
   bloco: string;
   numero: string;
   status: StatusId | null;
 }
 
 export interface ArquivoMarcacoes {
-  version: 1;
+  version: 1 | 2;
+  contexto?: ContextoExportacao;
   updatedAt: string;
   mapa?: {
     nome: string;
   };
   unidades: UnidadeExportada[];
+}
+
+export interface ContextoExportacao {
+  obra: Obra;
+  planta: PlantaObra;
+  mapaId: string;
+  definicao: PlantaDefinition;
+  kit?: Kit;
 }

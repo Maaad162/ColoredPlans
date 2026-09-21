@@ -241,7 +241,9 @@ test('importação agrupada, exportação e paginação limitada do histórico',
   const partes = [];
   for await (const parte of stream) partes.push(parte);
   const exportado = JSON.parse(Buffer.concat(partes).toString());
-  expect(exportado.version).toBe(1);
+  expect(exportado.version).toBe(2);
+  expect(exportado.contexto.obra.id).toBe(obraId);
+  expect(exportado.contexto.planta.id).toBe("planta-principal");
   expect(exportado.unidades.filter(u => u.status === 'feito')).toHaveLength(2);
   await selecionar(page);
   for (let i = 0; i < 20; i++) {
@@ -301,4 +303,102 @@ test('Kit no mapa distingue necessidade, consumo estimado, disponibilidade manua
   await ambiente.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(), `usuarios/${uid}/kits/kit-operacao`), { 'materiais': [{ id: 'registro', codigoSienge: '123', descricao: 'Registro', detalhe: '', quantidadePorKit: 1, unidadeMedida: 'un', disponibilidadeManual: null }] }));
   await expect(resumo).toContainText('disponibilidade não informada');
   await expect(resumo).toContainText('Não foi possível verificar a capacidade');
+});
+
+async function provisionarMultiplas() {
+  const definicao = { schemaVersion: 1, nome: 'Duas unidades', width: 400, height: 180, blocos: [{
+    id: 'a', nome: 'Setor A', x: 20, y: 40, width: 300, height: 90, unidades: [
+      { id: 'apt-042', label: '42', bloco: 'a', numero: '042', x: 20, y: 40, width: 140, height: 90 },
+      { id: 'apt-043', label: '43', bloco: 'a', numero: '043', x: 170, y: 40, width: 140, height: 90 },
+    ] }] };
+  await ambiente.withSecurityRulesDisabled(async c => {
+    const admin = c.firestore();
+    await setDoc(doc(admin, 'usuarios/' + uid + '/legendas/bloqueado'), { schemaVersion: 1, userId: uid, nome: 'Bloqueado', cor: '#884422', categoria: 'bloqueado' });
+    for (const obra of ['obra-a', 'obra-b']) {
+      const base = 'usuarios/' + uid + '/obras/' + obra;
+      await setDoc(doc(admin, base), { schemaVersion: 1, userId: uid, nome: obra === 'obra-a' ? 'Residencial A' : 'Residencial B', status: obra === 'obra-a' ? 'ativa' : 'arquivada', plantaLegada: false });
+      await setDoc(doc(admin, base + '/templates/tipo'), { schemaVersion: 1, definicao, unidadeIds: ['apt-042', 'apt-043'] });
+      await setDoc(doc(admin, base + '/equipes/hid'), { nome: 'Equipe hidráulica' });
+      for (const plantaId of ['torre-a', 'torre-b']) {
+        await setDoc(doc(admin, base + '/plantas/' + plantaId), { schemaVersion: 1, nome: plantaId === 'torre-a' ? 'Torre A' : 'Torre B', templateId: 'tipo' });
+        await setDoc(doc(admin, base + '/mapas/hid-' + plantaId), { schemaVersion: 1, userId: uid, obraId: obra, plantaId,
+          nome: 'Hidráulica', tipo: 'manual', equipeId: 'hid', kitUnidadeIds: [], marcacoes: obra === 'obra-a' && plantaId === 'torre-b' ? { 'apt-042': 'bloqueado', 'apt-043': 'feito' } : {} });
+      }
+    }
+  });
+}
+
+test('multiobra: template independente, dashboard, contexto, troca rápida e preferência', async ({ page }) => {
+  await provisionarMultiplas();
+  await page.getByLabel('Obra selecionada').selectOption('obra-a');
+  await expect(page.getByRole('heading', { name: 'Torre A', exact: true })).toBeVisible();
+  await expect(page.locator('.unidade')).toHaveCount(2);
+  await page.getByRole('button', { name: /Bloco a, unidade 042/ }).click();
+  await painel(page).getByRole('button', { name: 'Concluído', exact: true }).click();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  const caminho = 'usuarios/' + uid + '/obras/obra-a/mapas/hid-torre-a';
+  expect((await getDocFromServer(doc(banco, caminho))).data().marcacoes['apt-042']).toBe('feito');
+  await page.getByLabel('Equipe do serviço', { exact: true }).selectOption('');
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  expect((await getDocFromServer(doc(banco, caminho))).data().equipeId).toBe('');
+  await page.getByLabel('Equipe do serviço', { exact: true }).selectOption('hid');
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  await painel(page).getByLabel('Observação operacional').fill('Conferir conexão');
+  await painel(page).getByRole('button', { name: 'Salvar contexto', exact: true }).click();
+  await expect(page.getByText('Sincronizado', { exact: true })).toBeVisible();
+  expect((await getDocFromServer(doc(banco, caminho + '/contextos/apt-042'))).data().plantaId).toBe('torre-a');
+  await page.getByRole('button', { name: 'Visão geral da obra', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Torre B · ver serviços' }).click();
+  const resumo = page.getByRole('article', { name: 'Torre B · Hidráulica' });
+  await expect(resumo).toContainText('1 / 2 concluídas');
+  await page.screenshot({ path: '.edge-validation/phase4-overview.png', fullPage: true });
+  await resumo.getByRole('button', { name: '1 bloqueadas', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Torre B', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Status', { exact: true })).toHaveValue('categoria:bloqueado');
+  await expect(page.getByRole('button', { name: /Bloco a, unidade 042/ })).not.toHaveClass(/unidade--atenuada/);
+  await expect(page.getByRole('button', { name: /Bloco a, unidade 043/ })).toHaveClass(/unidade--atenuada/);
+  await page.getByLabel('Obra selecionada').selectOption('obra-b');
+  await expect(page.getByText('Obra arquivada · dados preservados')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Resumo operacional do mapa' })).toContainText('Concluídas0 / 2');
+  await page.getByLabel('Obra selecionada').selectOption('obra-a');
+  await page.getByLabel('Obra selecionada').selectOption('obra-b');
+  await page.getByLabel('Obra selecionada').selectOption('obra-a');
+  await expect(page.getByLabel('Planta selecionada')).toHaveValue('torre-b');
+  await page.reload();
+  await expect(page.getByLabel('Obra selecionada')).toHaveValue('obra-a');
+  await expect(page.getByLabel('Planta selecionada')).toHaveValue('torre-b');
+  await expect(page.getByRole('region', { name: 'Resumo operacional do mapa' })).toContainText('Concluídas1 / 2');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel('Obra selecionada')).toBeVisible();
+  expect(await page.evaluate(() => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
+  await page.screenshot({ path: '.edge-validation/phase4-mobile.png', fullPage: true });
+});
+
+test('multiobra: kit utiliza geometria selecionada e mantém vínculo com planta', async ({ page }) => {
+  await provisionarMultiplas();
+  await page.getByLabel('Obra selecionada').selectOption('obra-a');
+  await expect(page.getByRole('heading', { name: 'Torre A', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Central de Kits', exact: true }).click();
+  await page.getByRole('button', { name: '+ Criar Kit', exact: true }).click();
+  await page.getByLabel('Nome do Kit', { exact: true }).fill('Kit torre A');
+  await page.getByLabel('Descrição', { exact: true }).fill('Registro');
+  await page.getByRole('button', { name: 'Salvar Kit', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Selecionar unidades', exact: true }).click();
+  await expect(page.getByRole('checkbox')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Selecionar todas', exact: true }).click();
+  await page.getByRole('button', { name: 'Salvar 2 unidade(s)', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Abrir mapa', exact: true }).click();
+  await expect(page.locator('.unidade--kit-utilizado')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Visão geral da obra', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Torre A · ver serviços' }).click();
+  const servico = page.getByRole('article', { name: 'Torre A · Kit torre A' });
+  await servico.locator('summary').filter({ hasText: 'Materiais e continuidade' }).click();
+  await expect(servico).toContainText('Registro: necessário 2 un; disponibilidade desconhecida');
+  await expect(servico).not.toContainText('Déficit de capacidade');
+  await page.getByLabel('Planta selecionada').selectOption('torre-b');
+  await expect(page.getByRole('tab', { name: /^Kit torre A/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Central de Kits', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Nenhum Kit cadastrado' })).toBeVisible();
 });

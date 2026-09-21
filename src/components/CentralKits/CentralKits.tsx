@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../../data/planta";
+import { unidadesDaPlanta } from "../../services/geometria";
+import type { PlantaDefinition, Unidade } from "../../types/planta";
 import type { useKits } from "../../hooks/useKits";
 import { traduzirErro } from "../../services/erros";
 import { type DadosKit } from "../../services/kits";
 import type { Kit, MaterialKit } from "../../types/planta";
 
 interface CentralKitsProps {
+  definicao: PlantaDefinition;
   kitsState: ReturnType<typeof useKits>;
   onMensagem: (mensagem: string) => void;
   onAbrirMapa: (mapaId: string) => void;
@@ -31,7 +33,7 @@ function formatarQuantidade(valor: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
 }
 
-export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsProps) {
+export function CentralKits({ definicao, kitsState, onMensagem, onAbrirMapa }: CentralKitsProps) {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Kit | "novo" | null>(null);
   const [vinculando, setVinculando] = useState<Kit | null>(null);
@@ -97,6 +99,7 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
           </aside>
           {selecionado && (
             <KitDetalhes
+              unidades={unidadesDaPlanta(definicao)}
               kit={selecionado}
               onEditar={() => setEditor(selecionado)}
               onExcluir={() => void excluir(selecionado)}
@@ -124,6 +127,7 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
       {vinculando && (
         <KitUnidadesModal
           key={vinculando.id}
+          definicao={definicao}
           kit={vinculando}
           onFechar={() => setVinculando(null)}
           onSalvar={async (selecionadas) => {
@@ -138,6 +142,7 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
 }
 
 interface KitDetalhesProps {
+  unidades: Unidade[];
   kit: Kit;
   onEditar: () => void;
   onExcluir: () => void;
@@ -145,7 +150,7 @@ interface KitDetalhesProps {
   onAbrirMapa: () => void;
 }
 
-function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
+function KitDetalhes({ unidades, kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
   const materiais = kit.materiais;
   return (
     <article className="kit-details">
@@ -192,7 +197,7 @@ function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitD
         {kit.unidadeIds.length ? (
           <div className="unit-chips">
             {kit.unidadeIds.map((id) => {
-              const unidade = UNIDADE_BY_ID[id];
+              const unidade = unidades.find(u => u.id === id);
               return unidade ? <span key={id}>Bloco {unidade.bloco} · {unidade.numero}</span> : null;
             })}
           </div>
@@ -285,12 +290,13 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
 }
 
 interface KitUnidadesModalProps {
+  definicao: PlantaDefinition;
   kit: Kit;
   onFechar: () => void;
   onSalvar: (unidadeIds: string[]) => Promise<void>;
 }
 
-function KitUnidadesModal({ kit, onFechar, onSalvar }: KitUnidadesModalProps) {
+function KitUnidadesModal({ definicao, kit, onFechar, onSalvar }: KitUnidadesModalProps) {
   const [selecionadas, setSelecionadas] = useState(() => new Set(kit.unidadeIds));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -324,9 +330,9 @@ function KitUnidadesModal({ kit, onFechar, onSalvar }: KitUnidadesModalProps) {
     <div className="modal-backdrop" onMouseDown={onFechar}>
       <section className="modal-card modal-card--units" role="dialog" aria-modal="true" aria-labelledby="kit-unidades-titulo" onMouseDown={(event) => event.stopPropagation()}>
         <div className="manager-heading"><div><p className="eyebrow">Kit · {kit.nome}</p><h2 id="kit-unidades-titulo">Selecionar unidades aplicáveis</h2><p>Marque onde este serviço e sua composição teórica se aplicam.</p></div><button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar">×</button></div>
-        <div className="units-selection-summary"><div><span>Selecionadas</span><strong>{selecionadas.size}</strong></div><div><span>Itens calculados</span><strong>{formatarQuantidade(totalConsumo)}</strong></div><div className="units-selection-actions"><button className="link-button" type="button" onClick={() => setSelecionadas(new Set(UNIDADES.map((unidade) => unidade.id)))}>Selecionar todas</button><button className="link-button" type="button" onClick={() => setSelecionadas(new Set())}>Limpar</button></div></div>
+        <div className="units-selection-summary"><div><span>Selecionadas</span><strong>{selecionadas.size}</strong></div><div><span>Itens calculados</span><strong>{formatarQuantidade(totalConsumo)}</strong></div><div className="units-selection-actions"><button className="link-button" type="button" onClick={() => setSelecionadas(new Set(unidadesDaPlanta(definicao).map((unidade) => unidade.id)))}>Selecionar todas</button><button className="link-button" type="button" onClick={() => setSelecionadas(new Set())}>Limpar</button></div></div>
         <div className="unit-selector">
-          {BLOCOS.map((bloco) => (
+          {definicao.blocos.map((bloco) => (
             <fieldset key={bloco.id}><legend>{bloco.nome}</legend><div>
               {[...bloco.unidades].sort((a, b) => a.numero.localeCompare(b.numero)).map((unidade) => (
                 <label className={selecionadas.has(unidade.id) ? "unit-option unit-option--selected" : "unit-option"} key={unidade.id}>

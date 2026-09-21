@@ -1,3 +1,5 @@
+import { DEFINICAO_LEGADA, PLANTA_LEGADA_ID, idsDaPlanta, plantaDoDocumento } from "./geometria";
+import type { PlantaDefinition } from "../types/planta";
 import { ErroOperacional } from "./erros";
 import {
   Timestamp,
@@ -32,19 +34,20 @@ export function observarKits(
   obraId: string,
   aoAtualizar: (kits: Kit[], metadata: SnapshotMetadata) => void,
   aoFalhar: (erro: Error) => void,
+  plantaId = PLANTA_LEGADA_ID, definicao: PlantaDefinition = DEFINICAO_LEGADA,
 ): Unsubscribe {
   return onSnapshot(
-    query(kitsCollection(usuarioId), where("userId", "==", usuarioId)),
+    query(kitsCollection(usuarioId), where("userId", "==", usuarioId), ...(plantaId === PLANTA_LEGADA_ID ? [] : [where("obraId", "==", obraId), where("plantaId", "==", plantaId)])),
     { includeMetadataChanges: true },
     (snapshot) => {
       try {
         const kits = snapshot.docs
-          .filter((documento) => lerObraIdDoKit(documento.data().obraId) === obraId)
+          .filter((documento) => lerObraIdDoKit(documento.data().obraId) === obraId && plantaDoDocumento(documento.data().plantaId) === plantaId)
           .map((documento) => {
             const data = documento.data();
             return {
               id: documento.id,
-              obraId,
+              obraId, plantaId,
               schemaVersion: lerSchemaVersion(data.schemaVersion),
               userId: usuarioId,
               mapaId: typeof data.mapaId === "string" ? data.mapaId : "",
@@ -53,7 +56,7 @@ export function observarKits(
                   ? data.nome.trim().slice(0, 80)
                   : "Kit sem nome",
               materiais: validarMateriais(data.materiais),
-              unidadeIds: validarUnidadesKit(data.unidadeIds),
+              unidadeIds: validarUnidadesKit(data.unidadeIds, idsDaPlanta(definicao)),
               criadoEm:
                 data.criadoEm instanceof Timestamp
                   ? data.criadoEm.toDate().toISOString()
@@ -79,6 +82,7 @@ export async function salvarKitRemoto(
   usuarioId: string,
   obraId: string,
   dados: DadosKit,
+  plantaId = PLANTA_LEGADA_ID,
 ) {
   const nome = dados.nome.trim().slice(0, 80);
   if (!nome) throw new ErroOperacional("validacao", "Informe um nome para o Kit e seu mapa.");
@@ -91,6 +95,7 @@ export async function salvarKitRemoto(
       if (lerObraIdDoKit(kitSnapshot.data().obraId) !== obraId) {
         throw new ErroOperacional("validacao", "O Kit pertence a outra obra.");
       }
+      if (plantaDoDocumento(kitSnapshot.data().plantaId) !== plantaId) throw new ErroOperacional("permissao", "O Kit pertence a outra planta.");
       lerSchemaVersion(kitSnapshot.data().schemaVersion);
       const mapaId = kitSnapshot.data().mapaId;
       if (typeof mapaId !== "string" || !mapaId) {
@@ -126,7 +131,7 @@ export async function salvarKitRemoto(
   lote.set(referenciaKit, {
     userId: usuarioId,
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    obraId,
+    obraId, plantaId,
     mapaId,
     nome,
     materiais: validarMateriais(dados.materiais),
@@ -138,7 +143,7 @@ export async function salvarKitRemoto(
   lote.set(mapaDocument(usuarioId, obraId, mapaId), {
     userId: usuarioId,
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    obraId,
+    obraId, plantaId,
     nome,
     tipo: "kit",
     kitId: referenciaKit.id,
@@ -181,8 +186,9 @@ export async function atualizarUnidadesKit(
   obraId: string,
   kitId: string,
   unidadeIds: string[],
+  unidades: readonly string[] = idsDaPlanta(DEFINICAO_LEGADA),
 ) {
-  const idsValidos = validarUnidadesKit(unidadeIds);
+  const idsValidos = validarUnidadesKit(unidadeIds, unidades);
   const referenciaKit = doc(kitsCollection(usuarioId), kitId);
   await runTransaction(db, async (transacao) => {
     const kitSnapshot = await transacao.get(referenciaKit);

@@ -17,6 +17,7 @@ try {
   await ambiente.withSecurityRulesDisabled(async (contexto) => {
     const db = contexto.firestore();
     await setDoc(doc(db, `usuarios/${uid}`), { userId: uid, tipoConta: "estoque" });
+    await setDoc(doc(db, base), { userId: uid, nome: obraLegada.nome, schemaVersion: 0 });
     await setDoc(doc(db, antigo), { criadoPor: uid, nome: "Legado", marcacoes: { "bloco-01-001": "custom" }, extra: "preservar" });
     await setDoc(doc(db, `${base}/mapas/kit-antigo`), { userId: uid, nome: "Kit A", marcacoes: { "bloco-02-001": "custom" } });
     await setDoc(doc(db, `usuarios/${uid}/kits/kit-a`), { userId: uid, nome: "Kit A", materiais: [material], unidadeIds: ["bloco-01-001"] });
@@ -77,13 +78,14 @@ try {
   const caminhoConflito = `usuarios/${uid}/obras/${obraConflito.id}`;
   await ambiente.withSecurityRulesDisabled(async (contexto) => {
     const admin = contexto.firestore();
+    await setDoc(doc(admin, caminhoConflito), { userId: uid, nome: obraConflito.nome, schemaVersion: 0 });
     await setDoc(doc(admin, `${caminhoConflito}/mapas/repetido`), { userId: uid, nome: "Atual", marcacoes: { "bloco-01-001": "atual" } });
     await setDoc(doc(admin, `obras/${obraConflito.id}/mapas/repetido`), { criadoPor: uid, nome: "Antigo", marcacoes: { "bloco-01-001": "antigo" } });
   });
   await assert.rejects(migrarObra(db, uid, obraConflito, true), /Conflito/);
   assert.equal((await getDoc(doc(db, `${caminhoConflito}/mapas/repetido`))).data().marcacoes["bloco-01-001"], "atual");
   assert.equal((await getDoc(doc(db, `obras/${obraConflito.id}/mapas/repetido`))).data().marcacoes["bloco-01-001"], "antigo");
-  assert.equal((await getDoc(doc(db, caminhoConflito))).exists(), false);
+  assert.equal((await getDoc(doc(db, caminhoConflito))).data().schemaVersion, 0);
 
   const referencia = doc(db, `${base}/mapas/comparacao`);
   await setDoc(referencia, { userId: uid, obraId: obraLegada.id, schemaVersion: 1,
