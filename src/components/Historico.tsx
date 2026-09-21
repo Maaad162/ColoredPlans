@@ -3,6 +3,7 @@ import { limit, onSnapshot, orderBy, query, startAfter, Timestamp, where, type Q
 import { db } from "../config/firebase";
 import { historicoCollection, type EventoHistorico, type AcaoHistorico } from "../services/historico";
 import { getStatus } from "../config/statuses";
+import { plantaDoDocumento } from "../services/geometria";
 import { lerSchemaVersion } from "../config/dados";
 import { useControleSync } from "../hooks/useSincronizacao";
 import type { Marcacoes, StatusConfig } from "../types/planta";
@@ -17,7 +18,7 @@ function lerMarcacoes(valor: unknown): Marcacoes {
   return resultado;
 }
 function lerAcao(acao: unknown): AcaoHistorico {
-  if (acao === "unidade" || acao === "marcacoes" || acao === "criar" || acao === "excluir" || acao === "renomear") return acao;
+  if (acao === "unidade" || acao === "marcacoes" || acao === "criar" || acao === "excluir" || acao === "renomear" || acao === "contexto" || acao === "equipe") return acao;
   throw new Error("Histórico inválido.");
 }
 function converter(documento: QueryDocumentSnapshot): EventoHistorico {
@@ -27,7 +28,7 @@ function converter(documento: QueryDocumentSnapshot): EventoHistorico {
     || !Array.isArray(data.unidadeIds) || !data.unidadeIds.every((id: unknown) => typeof id === "string")
     || (data.nomeAnterior !== null && typeof data.nomeAnterior !== "string")
     || (data.nomeAtual !== null && typeof data.nomeAtual !== "string")) throw new Error("Histórico inválido.");
-  return { id: documento.id, acao: lerAcao(data.acao), userId: data.userId, mapaId: data.mapaId, mapaNome: data.mapaNome,
+  return { id: documento.id, plantaId: plantaDoDocumento(data.plantaId), acao: lerAcao(data.acao), userId: data.userId, mapaId: data.mapaId, mapaNome: data.mapaNome,
     unidadeIds: data.unidadeIds, antes: lerMarcacoes(data.antes), depois: lerMarcacoes(data.depois),
     nomeAnterior: data.nomeAnterior, nomeAtual: data.nomeAtual,
     criadoEm: data.criadoEm instanceof Timestamp ? data.criadoEm.toDate().toISOString() : null,
@@ -71,12 +72,14 @@ export function Historico({ usuarioId, obraId, legendas, mapaId, unidadeId, onFe
       {carregando ? <p role="status">Carregando histórico…</p> : <>
         {!eventos.length && <p>Nenhum evento nesta consulta. Alterações anteriores à ativação do histórico não foram reconstruídas.</p>}
         <ol className="history-list" aria-label="Eventos do histórico">{eventos.map(evento => <li key={evento.id}>
-          <strong>{evento.mapaNome}</strong> · {evento.pendente ? "Pendente de sincronização" : evento.criadoEm ? new Date(evento.criadoEm).toLocaleString("pt-BR") : "Data indisponível"}
+          <strong>{evento.mapaNome}</strong> · {evento.plantaId} · {evento.pendente ? "Pendente de sincronização" : evento.criadoEm ? new Date(evento.criadoEm).toLocaleString("pt-BR") : "Data indisponível"}
           <p>Por {evento.userId === usuarioId ? "você" : evento.userId}</p>
           {evento.acao === "criar" && <p>Mapa criado: {evento.nomeAtual}</p>}
           {evento.acao === "excluir" && <p>Mapa excluído: {evento.nomeAnterior}</p>}
           {evento.acao === "renomear" && <p>{evento.nomeAnterior} → {evento.nomeAtual}</p>}
-          {evento.unidadeIds.length > 0 && <details open={evento.unidadeIds.length === 1}>
+          {evento.acao === "equipe" && <p>Equipe do serviço: {evento.antes.equipeId || "não atribuída"} → {evento.depois.equipeId || "não atribuída"}</p>}
+          {evento.acao === "contexto" && <p>Contexto atualizado: observação “{evento.depois.observacao || "sem observação"}”; responsável “{evento.depois.responsavel || "não informado"}”.</p>}
+          {evento.acao !== "contexto" && evento.unidadeIds.length > 0 && <details open={evento.unidadeIds.length === 1}>
             <summary>{evento.unidadeIds.length} unidade(s) alterada(s)</summary>
             <ul>{evento.unidadeIds.map(id => <li key={id}>{id}: {getStatus(evento.antes[id] ?? null, legendas).nome} → {getStatus(evento.depois[id] ?? null, legendas).nome}</li>)}</ul>
           </details>}

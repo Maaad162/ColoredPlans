@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { getStatus } from "../../config/statuses";
-import type { StatusConfig, StatusId, Unidade } from "../../types/planta";
+import { CONTEXTO_OBSERVACAO_LIMITE, CONTEXTO_RESPONSAVEL_LIMITE } from "../../services/contextos";
+import { traduzirErro } from "../../services/erros";
+import type { ContextoUnidade, StatusConfig, StatusId, Unidade } from "../../types/planta";
 import { PaletaStatus } from "../PaletaStatus/PaletaStatus";
 
 interface PainelUnidadeProps {
@@ -8,6 +11,8 @@ interface PainelUnidadeProps {
   legendas: StatusConfig[];
   onDefinirStatus: (status: StatusId | null) => void;
   onHistorico: () => void;
+  contexto: ContextoUnidade;
+  onSalvarContexto: (observacao: string, responsavel: string) => Promise<void>;
 }
 
 export function PainelUnidade({
@@ -16,8 +21,19 @@ export function PainelUnidade({
   legendas,
   onDefinirStatus,
   onHistorico,
+  contexto,
+  onSalvarContexto,
 }: PainelUnidadeProps) {
   const status = getStatus(statusId, legendas);
+  const [observacao, setObservacao] = useState(contexto.observacao);
+  const [responsavel, setResponsavel] = useState(contexto.responsavel);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  useEffect(() => {
+    setObservacao(contexto.observacao);
+    setResponsavel(contexto.responsavel);
+    setErro(null);
+  }, [contexto.observacao, contexto.responsavel, contexto.atualizadoEm]);
 
   return (
     <section className="side-card painel-unidade" aria-labelledby="unidade-titulo">
@@ -76,6 +92,18 @@ export function PainelUnidade({
           >
             Limpar marcação
           </button>
+          <form className="unit-context" onSubmit={(event) => { event.preventDefault(); setSalvando(true); setErro(null);
+            void onSalvarContexto(observacao, responsavel).catch(falha => setErro(traduzirErro(falha).mensagem)).finally(() => setSalvando(false)); }}>
+            <p className="field-label">Contexto deste serviço</p>
+            <label htmlFor="unidade-responsavel">Responsável/equipe</label>
+            <input id="unidade-responsavel" maxLength={CONTEXTO_RESPONSAVEL_LIMITE} value={responsavel} onChange={event => setResponsavel(event.target.value)} placeholder="Ex.: Equipe hidráulica" />
+            <label htmlFor="unidade-observacao">Observação operacional</label>
+            <textarea id="unidade-observacao" maxLength={CONTEXTO_OBSERVACAO_LIMITE} value={observacao} onChange={event => setObservacao(event.target.value)} placeholder="Ex.: Aguardando chegada do registro." />
+            <small>{observacao.length}/{CONTEXTO_OBSERVACAO_LIMITE}</small>
+            {contexto.atualizadoEm && <small>Atualizado em {new Date(contexto.atualizadoEm).toLocaleString("pt-BR")}</small>}
+            {erro && <p className="form-error" role="alert">{erro}</p>}
+            <button className="button button--secondary button--full" type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar contexto"}</button>
+          </form>
         </>
       )}
     </section>

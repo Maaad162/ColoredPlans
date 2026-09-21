@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "obra": { "id": "residencial-exemplo", "nome": "Residencial Exemplo" },
+  "templates": [{
+    "id": "duas-unidades-v1",
+    "definicao": {
+      "schemaVersion": 1, "nome": "Modelo duas unidades", "width": 400, "height": 180,
+      "blocos": [{
+        "id": "a", "nome": "Setor A", "x": 20, "y": 40, "width": 300, "height": 90,
+        "unidades": [
+          { "id": "apt-042", "label": "42", "bloco": "a", "numero": "042", "x": 20, "y": 40, "width": 140, "height": 90 },
+          { "id": "apt-043", "label": "43", "bloco": "a", "numero": "043", "x": 170, "y": 40, "width": 140, "height": 90 }
+        ]
+      }]
+    }
+  }],
+  "plantas": [
+    { "id": "torre-a", "nome": "Torre A", "templateId": "duas-unidades-v1" },
+    { "id": "torre-b", "nome": "Torre B", "templateId": "duas-unidades-v1" }
+  ],
+  "equipes": [{ "id": "hidraulica", "nome": "Equipe hidráulica" }]
+}

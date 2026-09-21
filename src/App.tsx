@@ -11,16 +11,20 @@ import { PainelUnidade } from "./components/PainelUnidade/PainelUnidade";
 import { Planta } from "./components/Planta/Planta";
 import { Toolbar } from "./components/Toolbar/Toolbar";
 import { BuscaUnidade } from "./components/BuscaUnidade/BuscaUnidade";
-import { TOTAL_UNIDADES } from "./data/planta";
+import { idsDaPlanta } from "./services/geometria";
+import { NavegacaoObra, type DestinoMapa } from "./components/NavegacaoObra";
+import type { PlantaObra, PlantaDefinition } from "./types/planta";
 import { useAuth } from "./hooks/useAuth";
 import { useLegendas } from "./hooks/useLegendas";
 import { usePerfil } from "./hooks/usePerfil";
 import { usePlanta } from "./hooks/usePlanta";
+import { useEquipes } from "./hooks/useHierarquia";
 import { useKits } from "./hooks/useKits";
+import { useContextoUnidade, useContextosMapa } from "./hooks/useContextoUnidade";
 import { ProvedorSincronizacao } from "./hooks/useSincronizacao";
-import { IndicadorSincronizacao, FalhasSincronizacao } from "./components/EstadoSincronizacao";
 import { registrarErro, traduzirErro } from "./services/erros";
 import { Historico } from "./components/Historico";
+import { calcularResumoExecucao, calcularResumoMateriais } from "./services/operacao";
 import {
   baixarMarcacoes,
   baixarCsvMapas,
@@ -28,22 +32,21 @@ import {
 } from "./services/storage";
 import type { Obra, PerfilUsuario } from "./types/planta";
 
-export default function App({ obra }: { obra: Obra }) {
+export default function App() {
   const { usuario, carregando, entrar, sair, erro } = useAuth();
 
   if (carregando) return <AuthLoading />;
   if (!usuario) return <AuthScreen onEntrar={entrar} erroInicial={erro} />;
 
-  return <ContaAutenticada key={`${usuario.uid}:${obra.id}`} usuario={usuario} obra={obra} onSair={sair} />;
+  return <ContaAutenticada key={usuario.uid} usuario={usuario} onSair={sair} />;
 }
 
 interface ContaAutenticadaProps {
   usuario: User;
-  obra: Obra;
   onSair: () => Promise<void>;
 }
 
-function ContaAutenticada({ usuario, obra, onSair }: ContaAutenticadaProps) {
+function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
   const perfilState = usePerfil(usuario.uid);
   if (perfilState.carregando) return <AuthLoading />;
   if (!perfilState.perfil) {
@@ -57,33 +60,45 @@ function ContaAutenticada({ usuario, obra, onSair }: ContaAutenticadaProps) {
     );
   }
   return (
-    <ProvedorSincronizacao key={`${usuario.uid}:${obra.id}:${perfilState.perfil.tipoConta}`}><AplicacaoMapas
-      usuario={usuario}
-      key={`${usuario.uid}:${obra.id}:${perfilState.perfil.tipoConta}`}
-      obra={obra}
-      perfil={perfilState.perfil}
-      onSair={onSair}
-    /></ProvedorSincronizacao>
+    <ProvedorSincronizacao key={`${usuario.uid}:${perfilState.perfil.tipoConta}`}>
+      <NavegacaoObra onSair={onSair} uid={usuario.uid} estoque={perfilState.perfil.tipoConta === "estoque"}
+        renderizar={(obra, instancia, definicao, destino) => perfilState.perfil && <AplicacaoMapas
+          key={`${obra.id}:${instancia.id}`} usuario={usuario} obra={obra} instancia={instancia}
+          definicao={definicao} destino={destino} perfil={perfilState.perfil} onSair={onSair} />} />
+    </ProvedorSincronizacao>
   );
 }
 
 interface AplicacaoMapasProps extends ContaAutenticadaProps {
+  obra: Obra; instancia: PlantaObra; definicao: PlantaDefinition; destino: DestinoMapa | null;
   perfil: PerfilUsuario;
 }
 
-function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) {
+function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }: AplicacaoMapasProps) {
   const legendasState = useLegendas(usuario.uid);
-  const kitsState = useKits(usuario.uid, obra.id, perfil.tipoConta === "estoque");
+  const { dados: equipes } = useEquipes(usuario.uid, obra.id);
+  const kitsState = useKits(usuario.uid, obra.id, perfil.tipoConta === "estoque", instancia, definicao);
   const planta = usePlanta(
     usuario.uid,
     obra,
-    legendasState.legendas,
+    legendasState.legendas, instancia, definicao,
     perfil.tipoConta === "estoque",
   );
   const [zoom, setZoom] = useState(0.8);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [secaoAtiva, setSecaoAtiva] = useState<"mapas" | "kits">("mapas");
   const [historico, setHistorico] = useState<{ mapaId?: string; unidadeId?: string } | null>(null);
+  const [responsavelFiltro, setResponsavelFiltro] = useState("todos");
+  const contextosMapa = useContextosMapa(usuario.uid, obra.id, planta.abaAtual);
+  const contextoState = useContextoUnidade(usuario.uid, obra.id, planta.abaAtual, planta.unidadeSelecionada?.id,
+    contextosMapa.find(item => item.unidadeId === planta.unidadeSelecionada?.id), idsDaPlanta(definicao));
+
+  const [destinoAplicado, setDestinoAplicado] = useState(false);
+  useEffect(() => {
+    if (destino && !destinoAplicado && planta.abas.some(m => m.id === destino.mapaId)) {
+      planta.selecionarAba(destino.mapaId); planta.setStatusFiltro(destino.filtro); setDestinoAplicado(true);
+    }
+  }, [destino, destinoAplicado, planta]);
 
   useEffect(() => {
     if (!mensagem) return;
@@ -91,11 +106,20 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
     return () => window.clearTimeout(timeout);
   }, [mensagem]);
 
+  useEffect(() => {
+    setResponsavelFiltro("todos");
+  }, [planta.abaAtual?.id]);
+
   if (legendasState.carregando || !planta.abaAtual) return <>
     <AuthLoading />
-    <IndicadorSincronizacao />
-    <FalhasSincronizacao />
+
+
   </>;
+  const unidadesAplicaveis = planta.abaAtual.tipo === "kit"
+    ? planta.unidades.filter(unidade => planta.abaAtual.kitUnidadeIds.includes(unidade.id)) : planta.unidades;
+  const resumoExecucao = calcularResumoExecucao(unidadesAplicaveis, planta.marcacoes, planta.statuses);
+  const kitAtivo = kitsState.kits.find(kit => kit.id === planta.abaAtual.kitId);
+  const resumoMateriais = kitAtivo ? calcularResumoMateriais(kitAtivo, resumoExecucao) : null;
 
   async function importar(arquivo: File) {
     try {
@@ -105,6 +129,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
         conteudo,
         planta.unidades,
         planta.statuses,
+        { obra, planta: instancia, mapaId: planta.abaAtual.id, definicao, kit: kitAtivo },
       );
       const confirmado = window.confirm(
         `A importação substituirá as marcações da aba “${planta.abaAtual.nome}”. Deseja continuar?`,
@@ -142,25 +167,23 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
           </div>
         </div>
         <div className="header-meta">
-          <IndicadorSincronizacao />
+
           <span className="header-meta__divider" />
           <span className={`account-badge account-badge--${perfil.tipoConta}`}>
             {perfil.tipoConta === "estoque" ? "Estoque" : "Apontamento"}
           </span>
           <span className="header-meta__divider" />
-          <span>{TOTAL_UNIDADES} unidades</span>
+          <span>{planta.unidades.length} unidades</span>
           <span className="header-meta__divider" />
           <span className="header-user" title={usuario.email ?? "Usuário autenticado"}>
             {usuario.email}
           </span>
-          <button className="header-logout" type="button" onClick={() => void onSair().catch(erro => { registrarErro("saída", erro); setMensagem(traduzirErro(erro).mensagem); })}>
-            Sair
-          </button>
+
         </div>
       </header>
 
       <main className="app-main">
-        <FalhasSincronizacao />
+
 
         <nav className="section-nav" aria-label="Áreas da aplicação">
           <div className="section-nav__tabs">
@@ -182,6 +205,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
 
         {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
           <CentralKits
+            definicao={definicao}
             kitsState={kitsState}
             onMensagem={setMensagem}
             onAbrirMapa={(mapaId) => {
@@ -207,6 +231,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
           }}
         />
 
+        <label className="context-nav">Equipe do serviço <select aria-label="Equipe do serviço" value={planta.abaAtual.equipeId ?? ""} onChange={e => planta.definirEquipe(e.target.value)}><option value="">Não atribuída</option>{equipes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></label>
         <BuscaUnidade unidades={planta.unidades} onSelecionar={planta.localizarUnidade} />
         <button className="link-button" type="button" onClick={() => setHistorico({ mapaId: planta.abaAtual.id })}>Histórico deste mapa</button>
         <Toolbar
@@ -227,12 +252,33 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
               planta.unidades,
               planta.marcacoes,
               planta.abaAtual.nome,
+              { obra, planta: instancia, mapaId: planta.abaAtual.id, definicao, kit: kitAtivo },
             );
             setMensagem(`Marcações de “${planta.abaAtual.nome}” exportadas.`);
           }}
           onImportar={importar}
           onLimparTudo={limparTudo}
+          responsaveis={[...new Set(contextosMapa.map(item => item.responsavel).filter(Boolean))].sort()}
+          responsavelFiltro={responsavelFiltro}
+          onResponsavelFiltro={setResponsavelFiltro}
+          onLimparFiltros={() => { planta.setBlocoFiltro("todos"); planta.setStatusFiltro("todos"); setResponsavelFiltro("todos"); }}
         />
+
+        <section className="operation-summary" aria-label="Resumo operacional do mapa">
+          <div><span>Concluídas</span><strong>{resumoExecucao.concluidas} / {resumoExecucao.total}</strong></div>
+          <div><span>Em andamento</span><strong>{resumoExecucao.andamento}</strong></div>
+          <div><span>Bloqueadas</span><strong>{resumoExecucao.bloqueadas}</strong></div>
+          <div><span>Ainda não concluídas</span><strong>{resumoExecucao.restantes}</strong></div>
+          {resumoMateriais && <details className="materials-summary"><summary>Ver materiais necessários para concluir</summary>
+            <p>Valores teóricos do Kit; não representam baixa ou saldo oficial do SIENGE.</p>
+            {kitAtivo?.materiais.some(item => item.disponibilidadeManual !== null) && <p>Disponibilidade informada manualmente · atualização do Kit: {new Date(kitAtivo.atualizadoEm).toLocaleString("pt-BR")}{kitAtivo.atualizadoPor ? ` · por ${kitAtivo.atualizadoPor}` : ""}</p>}
+            <ul>{resumoMateriais.materiais.map(material => <li key={material.materialId}><strong>{material.descricao}</strong>: necessário {material.necessidadeRestante.toLocaleString("pt-BR")} {material.unidadeMedida}; consumo estimado {material.consumoEstimado.toLocaleString("pt-BR")} {material.unidadeMedida}
+              {material.disponibilidade === null ? "; disponibilidade não informada" : `; disponível manualmente ${material.disponibilidade.toLocaleString("pt-BR")} ${material.unidadeMedida}${material.deficit ? `; déficit ${material.deficit.toLocaleString("pt-BR")} ${material.unidadeMedida}` : "; suficiente"}`}</li>)}</ul>
+            {resumoMateriais.capacidade === null ? <p>Não foi possível verificar a capacidade: há disponibilidade desconhecida.</p>
+              : resumoMateriais.capacidade >= resumoExecucao.restantes ? <p>Material informado suficiente para concluir as {resumoExecucao.restantes} unidades restantes.</p>
+              : <p>Disponibilidade informada permite executar {resumoMateriais.capacidade} das {resumoExecucao.restantes} unidades restantes. Déficit de capacidade: {resumoMateriais.deficitUnidades} unidade(s). Limitante: {resumoMateriais.materiais.find(item => item.materialId === resumoMateriais.materialLimitanteId)?.descricao}.</p>}
+          </details>}
+        </section>
 
         <div
           className="workspace"
@@ -244,10 +290,10 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
             <div className="map-heading">
               <div>
                 <p className="eyebrow">{planta.abaAtual.tipo === "kit" ? "Mapa de Kit" : "Serviço"} · {planta.abaAtual.nome}</p>
-                <h2 id="planta-titulo">Planta do empreendimento</h2>
+                <h2 id="planta-titulo">{instancia.nome}</h2>
                 {planta.abaAtual.tipo === "kit" && (
                   <p className="kit-map-summary">
-                    <strong>{planta.abaAtual.kitUnidadeIds.length}</strong> unidade(s) receberam este Kit. O contorno verde indica a utilização.
+                    <strong>{planta.abaAtual.kitUnidadeIds.length}</strong> unidade(s) aplicáveis a este serviço. O preenchimento verde indica a aplicabilidade quando n?o h? marca??o.
                   </p>
                 )}
               </div>
@@ -260,11 +306,12 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
               </p>
             </div>
             <Planta
+              definicao={definicao}
               blocos={planta.blocos}
               marcacoes={planta.marcacoes}
               legendas={planta.statuses}
               selecionadaId={planta.unidadeSelecionada?.id ?? null}
-              unidadeAtenuada={planta.unidadeAtenuada}
+              unidadeAtenuada={(id) => planta.unidadeAtenuada(id) || (responsavelFiltro !== "todos" && contextosMapa.find(item => item.unidadeId === id)?.responsavel !== responsavelFiltro)}
               onSelecionar={planta.selecionarUnidade}
               zoom={zoom}
               onZoomChange={setZoom}
@@ -275,6 +322,7 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
 
           <aside className="sidebar" aria-label="Informações da planta">
             <PainelUnidade
+              key={`${planta.abaAtual.id}:${planta.unidadeSelecionada?.id ?? "sem-selecao"}`}
               onHistorico={() => setHistorico({ mapaId: planta.abaAtual.id, unidadeId: planta.unidadeSelecionada?.id })}
               unidade={planta.unidadeSelecionada}
               legendas={planta.statuses}
@@ -288,11 +336,13 @@ function AplicacaoMapas({ usuario, obra, perfil, onSair }: AplicacaoMapasProps) 
                   planta.definirStatus(planta.unidadeSelecionada.id, status);
                 }
               }}
+              contexto={contextoState.contexto}
+              onSalvarContexto={contextoState.salvar}
             />
             <Legenda
               legendas={planta.statuses}
               contagens={planta.contagens}
-              total={TOTAL_UNIDADES}
+              total={planta.unidades.length}
             />
           </aside>
         </div>

@@ -1,5 +1,7 @@
 import { ErroOperacional } from "./erros.ts";
 import { OBRA_LEGADA_ID } from "../config/dados.ts";
+import { validarDefinicao, idsDaPlanta } from "./geometria.ts";
+import type { ContextoExportacao } from "../types/planta";
 import type {
   ArquivoMarcacoes,
   Marcacoes,
@@ -62,12 +64,15 @@ export function criarArquivoExportacao(
   unidades: Unidade[],
   marcacoes: Marcacoes,
   nomeMapa?: string,
+  contexto?: ContextoExportacao,
 ): ArquivoMarcacoes {
   return {
-    version: 1,
+    version: contexto ? 2 : 1,
+    ...(contexto ? { contexto } : {}),
     updatedAt: new Date().toISOString(),
     ...(nomeMapa ? { mapa: { nome: nomeMapa } } : {}),
     unidades: unidades.map((unidade) => ({
+      ...(contexto ? { id: unidade.id } : {}),
       bloco: unidade.bloco,
       numero: unidade.numero,
       status: marcacoes[unidade.id] ?? null,
@@ -79,8 +84,9 @@ export function baixarMarcacoes(
   unidades: Unidade[],
   marcacoes: Marcacoes,
   nomeMapa?: string,
+  contexto?: ContextoExportacao,
 ) {
-  const arquivo = criarArquivoExportacao(unidades, marcacoes, nomeMapa);
+  const arquivo = criarArquivoExportacao(unidades, marcacoes, nomeMapa, contexto);
   const blob = new Blob([JSON.stringify(arquivo, null, 2)], {
     type: "application/json",
   });
@@ -104,6 +110,7 @@ export function validarArquivoImportacao(
   conteudo: unknown,
   unidades: Unidade[],
   legendas: StatusConfig[],
+  contexto?: ContextoExportacao,
 ): Marcacoes {
   if (!conteudo || typeof conteudo !== "object") {
     throw new ErroOperacional("validacao", "O arquivo não contém um objeto JSON válido.");
@@ -111,8 +118,18 @@ export function validarArquivoImportacao(
 
   const version = (conteudo as { version?: unknown }).version;
   // Arquivos antigos sem versão continuam compatíveis com o formato atual.
-  if (version !== undefined && version !== 1) {
-    throw new ErroOperacional("validacao", "Versão do arquivo não suportada. Importe um arquivo JSON de versão 1.");
+  if (version !== undefined && version !== 1 && version !== 2) {
+    throw new ErroOperacional("validacao", "Versão do arquivo não suportada. Importe um arquivo JSON de versão 1 ou 2.");
+  }
+
+  if (version === 2) {
+    const arquivo = conteudo as { contexto?: Partial<ContextoExportacao> };
+    const origem = arquivo.contexto;
+    if (!contexto || origem?.obra?.id !== contexto.obra.id || origem?.planta?.id !== contexto.planta.id
+      || origem.mapaId !== contexto.mapaId || origem.planta.templateId !== contexto.planta.templateId
+      || origem.kit?.id !== contexto.kit?.id) throw new ErroOperacional("validacao", "O arquivo pertence a outra obra, planta, mapa ou Kit.");
+    const ids = idsDaPlanta(validarDefinicao(origem.definicao));
+    if (ids.length !== unidades.length || ids.some(id => !unidades.some(u => u.id === id))) throw new ErroOperacional("validacao", "A geometria do arquivo não corresponde à planta atual.");
   }
 
   const candidatas = (conteudo as { unidades?: unknown }).unidades;
@@ -135,7 +152,8 @@ export function validarArquivoImportacao(
       throw new ErroOperacional("validacao", "Toda unidade precisa de bloco e número em texto.");
     }
 
-    const id = `bloco-${bloco}-${numero}`;
+    const id = version === 2 ? (item as Record<string, unknown>).id : unidades.find(u => u.bloco === bloco && u.numero === numero)?.id;
+    if (typeof id !== "string") throw new ErroOperacional("validacao", "Identidade da unidade inválida no arquivo.");
     if (!idsValidos.has(id)) {
       throw new ErroOperacional("validacao", `A unidade ${bloco}/${numero} não existe nesta planta.`);
     }

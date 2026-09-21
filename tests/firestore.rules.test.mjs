@@ -371,6 +371,7 @@ try {
 
   // Mesmo ID de mapa em obras distintas não compartilha marcações nem vínculos.
   const obraB = "obra-b";
+  await ambiente.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `usuarios/${usuario1}/obras/${obraB}`), { userId: usuario1, nome: "Obra B", schemaVersion: 1 }));
   const mapaB = doc(banco1, `usuarios/${usuario1}/obras/${obraB}/mapas/pintura`);
   await assertSucceeds(setDoc(mapaB, { ...escopo, obraId: obraB, userId: usuario1, nome: "Obra B", marcacoes: {} }));
   await assertSucceeds(updateDoc(mapaB, { "marcacoes.bloco-01-001": "obra-b-status" }));

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { BLOCOS, UNIDADES, UNIDADE_BY_ID } from "../../data/planta";
+import { unidadesDaPlanta } from "../../services/geometria";
+import type { PlantaDefinition, Unidade } from "../../types/planta";
 import type { useKits } from "../../hooks/useKits";
 import { traduzirErro } from "../../services/erros";
-import { calcularConsumoKit, type DadosKit } from "../../services/kits";
+import { type DadosKit } from "../../services/kits";
 import type { Kit, MaterialKit } from "../../types/planta";
 
 interface CentralKitsProps {
+  definicao: PlantaDefinition;
   kitsState: ReturnType<typeof useKits>;
   onMensagem: (mensagem: string) => void;
   onAbrirMapa: (mapaId: string) => void;
@@ -22,6 +24,8 @@ function materialVazio(): MaterialKit {
     descricao: "",
     detalhe: "",
     quantidadePorKit: 1,
+    unidadeMedida: "un",
+    disponibilidadeManual: null,
   };
 }
 
@@ -29,7 +33,7 @@ function formatarQuantidade(valor: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
 }
 
-export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsProps) {
+export function CentralKits({ definicao, kitsState, onMensagem, onAbrirMapa }: CentralKitsProps) {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Kit | "novo" | null>(null);
   const [vinculando, setVinculando] = useState<Kit | null>(null);
@@ -63,7 +67,7 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
         <div>
           <p className="eyebrow">Estoque · consumo por unidade</p>
           <h2 id="kits-titulo">Central de Kits</h2>
-          <p>Um Kit representa sempre o material necessário para uma unidade da planta.</p>
+          <p>Um Kit representa a composição teórica necessária para executar o serviço em uma unidade.</p>
         </div>
         <button className="button button--primary" type="button" onClick={() => setEditor("novo")}>+ Criar Kit</button>
       </div>
@@ -89,12 +93,13 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
                 onClick={() => setSelecionadoId(kit.id)}
               >
                 <span className="kit-list-item__icon" aria-hidden="true">▦</span>
-                <span><strong>{kit.nome}</strong><small>{kit.unidadeIds.length} unidades · {kit.materiais.length} materiais</small><small>Mapa: {kit.nome}</small></span>
+                <span><strong>{kit.nome}</strong><small>{kit.unidadeIds.length} unidades aplicáveis · {kit.materiais.length} materiais</small><small>Mapa: {kit.nome}</small></span>
               </button>
             ))}
           </aside>
           {selecionado && (
             <KitDetalhes
+              unidades={unidadesDaPlanta(definicao)}
               kit={selecionado}
               onEditar={() => setEditor(selecionado)}
               onExcluir={() => void excluir(selecionado)}
@@ -122,6 +127,7 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
       {vinculando && (
         <KitUnidadesModal
           key={vinculando.id}
+          definicao={definicao}
           kit={vinculando}
           onFechar={() => setVinculando(null)}
           onSalvar={async (selecionadas) => {
@@ -136,6 +142,7 @@ export function CentralKits({ kitsState, onMensagem, onAbrirMapa }: CentralKitsP
 }
 
 interface KitDetalhesProps {
+  unidades: Unidade[];
   kit: Kit;
   onEditar: () => void;
   onExcluir: () => void;
@@ -143,8 +150,8 @@ interface KitDetalhesProps {
   onAbrirMapa: () => void;
 }
 
-function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
-  const consumo = calcularConsumoKit(kit);
+function KitDetalhes({ unidades, kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
+  const materiais = kit.materiais;
   return (
     <article className="kit-details">
       <header className="kit-details__header">
@@ -157,27 +164,28 @@ function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitD
         </div>
       </header>
       <div className="kit-metrics">
-        <div><span>Unidades atendidas</span><strong>{kit.unidadeIds.length}</strong></div>
+        <div><span>Unidades aplicáveis</span><strong>{kit.unidadeIds.length}</strong></div>
         <div><span>Materiais no Kit</span><strong>{kit.materiais.length}</strong></div>
-        <div><span>Aplicações contabilizadas</span><strong>{kit.unidadeIds.length}</strong></div>
+        <div><span>Referências SIENGE</span><strong>{kit.materiais.filter(item => item.codigoSienge).length}</strong></div>
       </div>
       <section className="kit-map-link" aria-label="Mapa associado">
         <div><span>Mapa associado</span><strong>{kit.nome}</strong></div>
         <button className="link-button" type="button" onClick={onAbrirMapa} disabled={!kit.mapaId}>Abrir em Mapas e Marcações</button>
       </section>
       <section className="kit-section">
-        <div className="kit-section__heading"><div><p className="field-label">Materiais utilizados</p><h4>Consumo calculado automaticamente</h4></div><small>Qtd/Kit × unidades atendidas</small></div>
+        <div className="kit-section__heading"><div><p className="field-label">Composição teórica</p><h4>Materiais por unidade aplicável</h4></div><small>Não representa movimentação de estoque</small></div>
+        {kit.materiais.some(item => item.disponibilidadeManual !== null) && <p className="kit-section__empty">Disponibilidade informada manualmente · atualização do Kit: {new Date(kit.atualizadoEm).toLocaleString("pt-BR")}{kit.atualizadoPor ? ` · por ${kit.atualizadoPor}` : ""}</p>}
         <div className="kit-table-wrap">
           <table className="kit-table">
-            <thead><tr><th>Cód. Sienge</th><th>Descrição</th><th>Detalhe</th><th>Qtd/Kit</th><th>Utilizado</th></tr></thead>
+            <thead><tr><th>Referência SIENGE</th><th>Descrição</th><th>Detalhe</th><th>Por unidade</th><th>Disponibilidade informada</th></tr></thead>
             <tbody>
-              {consumo.map((material) => (
+              {materiais.map((material) => (
                 <tr key={material.id}>
-                  <td><code>{material.codigoSienge}</code></td>
+                  <td><code>{material.codigoSienge || "Não vinculada"}</code></td>
                   <td><strong>{material.descricao}</strong></td>
                   <td>{material.detalhe}</td>
-                  <td>{formatarQuantidade(material.quantidadePorKit)}</td>
-                  <td><strong className="consumption-value">{formatarQuantidade(material.utilizado)}</strong></td>
+                  <td>{formatarQuantidade(material.quantidadePorKit)} {material.unidadeMedida}</td>
+                  <td><strong className="consumption-value">{material.disponibilidadeManual === null ? "Não informada" : `${formatarQuantidade(material.disponibilidadeManual)} ${material.unidadeMedida}`}</strong></td>
                 </tr>
               ))}
             </tbody>
@@ -185,11 +193,11 @@ function KitDetalhes({ kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitD
         </div>
       </section>
       <section className="kit-section">
-        <div className="kit-section__heading"><div><p className="field-label">Unidades da planta</p><h4>Unidades que receberam o Kit</h4></div></div>
+        <div className="kit-section__heading"><div><p className="field-label">Unidades da planta</p><h4>Unidades às quais este serviço se aplica</h4></div></div>
         {kit.unidadeIds.length ? (
           <div className="unit-chips">
             {kit.unidadeIds.map((id) => {
-              const unidade = UNIDADE_BY_ID[id];
+              const unidade = unidades.find(u => u.id === id);
               return unidade ? <span key={id}>Bloco {unidade.bloco} · {unidade.numero}</span> : null;
             })}
           </div>
@@ -213,7 +221,7 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  function atualizarMaterial(id: string, campo: keyof MaterialKit, valor: string | number) {
+  function atualizarMaterial(id: string, campo: keyof MaterialKit, valor: string | number | null) {
     setMateriais((atuais) => atuais.map((material) => material.id === id ? { ...material, [campo]: valor } : material));
   }
 
@@ -221,10 +229,10 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
     event.preventDefault();
     if (!nome.trim()) return setErro("Informe o nome do Kit.");
     if (materiais.length === 0) return setErro("Adicione pelo menos um material.");
-    if (materiais.some((material) => !material.codigoSienge.trim() || !material.descricao.trim() || material.quantidadePorKit <= 0)) {
-      return setErro("Preencha código, descrição e uma quantidade maior que zero em todos os materiais.");
+    if (materiais.some((material) => !material.descricao.trim() || material.quantidadePorKit <= 0 || !material.unidadeMedida.trim())) {
+      return setErro("Preencha descrição, unidade de medida e uma quantidade maior que zero em todos os materiais.");
     }
-    const codigos = materiais.map((material) => material.codigoSienge.trim().toLocaleLowerCase());
+    const codigos = materiais.map((material) => material.codigoSienge.trim().toLocaleLowerCase()).filter(Boolean);
     if (new Set(codigos).size !== codigos.length) return setErro("O mesmo Cód. Sienge aparece mais de uma vez neste Kit.");
     setSalvando(true);
     setErro(null);
@@ -263,10 +271,12 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
             {materiais.map((material, indice) => (
               <fieldset className="material-editor" key={material.id}>
                 <legend>Material {indice + 1}</legend>
-                <label>Cód. Sienge<input value={material.codigoSienge} maxLength={32} onChange={(event) => atualizarMaterial(material.id, "codigoSienge", event.target.value)} required /></label>
+                <label>Referência SIENGE (opcional)<input value={material.codigoSienge} maxLength={32} onChange={(event) => atualizarMaterial(material.id, "codigoSienge", event.target.value)} /></label>
                 <label>Descrição<input value={material.descricao} maxLength={100} onChange={(event) => atualizarMaterial(material.id, "descricao", event.target.value)} required /></label>
                 <label className="material-editor__detail">Detalhe (opcional)<input value={material.detalhe} maxLength={180} placeholder="Pode ficar em branco" onChange={(event) => atualizarMaterial(material.id, "detalhe", event.target.value)} /></label>
-                <label>Quantidade por Kit<input type="number" min="0.001" step="0.001" value={material.quantidadePorKit} onChange={(event) => atualizarMaterial(material.id, "quantidadePorKit", Number(event.target.value))} required /></label>
+                <label>Unidade de medida<input value={material.unidadeMedida} maxLength={12} placeholder="un, m, kg, L…" onChange={(event) => atualizarMaterial(material.id, "unidadeMedida", event.target.value)} required /></label>
+                <label>Quantidade por unidade<input type="number" min="0.001" step="0.001" value={material.quantidadePorKit} onChange={(event) => atualizarMaterial(material.id, "quantidadePorKit", Number(event.target.value))} required /></label>
+                <label>Disponibilidade informada (opcional)<input type="number" min="0" step="0.001" value={material.disponibilidadeManual ?? ""} placeholder="Desconhecida" onChange={(event) => atualizarMaterial(material.id, "disponibilidadeManual", event.target.value === "" ? null : Number(event.target.value))} /><small>Fonte manual · atualizada ao salvar o Kit</small></label>
                 {materiais.length > 1 && <button className="material-editor__remove" type="button" onClick={() => setMateriais((atuais) => atuais.filter((item) => item.id !== material.id))}>Remover</button>}
               </fieldset>
             ))}
@@ -280,12 +290,13 @@ function KitEditorModal({ kit, onFechar, onSalvar }: KitEditorModalProps) {
 }
 
 interface KitUnidadesModalProps {
+  definicao: PlantaDefinition;
   kit: Kit;
   onFechar: () => void;
   onSalvar: (unidadeIds: string[]) => Promise<void>;
 }
 
-function KitUnidadesModal({ kit, onFechar, onSalvar }: KitUnidadesModalProps) {
+function KitUnidadesModal({ definicao, kit, onFechar, onSalvar }: KitUnidadesModalProps) {
   const [selecionadas, setSelecionadas] = useState(() => new Set(kit.unidadeIds));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -318,10 +329,10 @@ function KitUnidadesModal({ kit, onFechar, onSalvar }: KitUnidadesModalProps) {
   return (
     <div className="modal-backdrop" onMouseDown={onFechar}>
       <section className="modal-card modal-card--units" role="dialog" aria-modal="true" aria-labelledby="kit-unidades-titulo" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="manager-heading"><div><p className="eyebrow">Kit · {kit.nome}</p><h2 id="kit-unidades-titulo">Selecionar unidades</h2><p>Cada unidade pode contabilizar este Kit apenas uma vez.</p></div><button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar">×</button></div>
-        <div className="units-selection-summary"><div><span>Selecionadas</span><strong>{selecionadas.size}</strong></div><div><span>Itens calculados</span><strong>{formatarQuantidade(totalConsumo)}</strong></div><div className="units-selection-actions"><button className="link-button" type="button" onClick={() => setSelecionadas(new Set(UNIDADES.map((unidade) => unidade.id)))}>Selecionar todas</button><button className="link-button" type="button" onClick={() => setSelecionadas(new Set())}>Limpar</button></div></div>
+        <div className="manager-heading"><div><p className="eyebrow">Kit · {kit.nome}</p><h2 id="kit-unidades-titulo">Selecionar unidades aplicáveis</h2><p>Marque onde este serviço e sua composição teórica se aplicam.</p></div><button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar">×</button></div>
+        <div className="units-selection-summary"><div><span>Selecionadas</span><strong>{selecionadas.size}</strong></div><div><span>Itens calculados</span><strong>{formatarQuantidade(totalConsumo)}</strong></div><div className="units-selection-actions"><button className="link-button" type="button" onClick={() => setSelecionadas(new Set(unidadesDaPlanta(definicao).map((unidade) => unidade.id)))}>Selecionar todas</button><button className="link-button" type="button" onClick={() => setSelecionadas(new Set())}>Limpar</button></div></div>
         <div className="unit-selector">
-          {BLOCOS.map((bloco) => (
+          {definicao.blocos.map((bloco) => (
             <fieldset key={bloco.id}><legend>{bloco.nome}</legend><div>
               {[...bloco.unidades].sort((a, b) => a.numero.localeCompare(b.numero)).map((unidade) => (
                 <label className={selecionadas.has(unidade.id) ? "unit-option unit-option--selected" : "unit-option"} key={unidade.id}>

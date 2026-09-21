@@ -24,6 +24,10 @@ interface ToolbarProps {
   onExportarCsv: () => void;
   onImportar: (arquivo: File) => void;
   onLimparTudo: () => void;
+  onLimparFiltros: () => void;
+  responsaveis: string[];
+  responsavelFiltro: string;
+  onResponsavelFiltro: (responsavel: string) => void;
 }
 
 export function Toolbar({
@@ -42,6 +46,10 @@ export function Toolbar({
   onExportarCsv,
   onImportar,
   onLimparTudo,
+  onLimparFiltros,
+  responsaveis,
+  responsavelFiltro,
+  onResponsavelFiltro,
 }: ToolbarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +72,11 @@ export function Toolbar({
             </select>
           </div>
         </div>
+        {responsaveis.length > 0 && <div className="select-field"><label htmlFor="filtro-responsavel">Responsável</label><div className="select-field__control">
+          <Icon name="filter" size={16} /><select id="filtro-responsavel" value={responsavelFiltro} onChange={event => onResponsavelFiltro(event.target.value)}>
+            <option value="todos">Todos</option>{responsaveis.map(item => <option key={item} value={item}>{item}</option>)}
+          </select></div></div>}
+        {(blocoFiltro !== "todos" || statusFiltro !== "todos" || responsavelFiltro !== "todos") && <button className="link-button" type="button" onClick={onLimparFiltros}>Limpar filtros</button>}
 
         <div className="select-field">
           <label htmlFor="filtro-status">Status</label>
@@ -75,10 +88,16 @@ export function Toolbar({
               onChange={(event) => onStatusFiltro(event.target.value as StatusFilter)}
             >
               <option value="todos">Todos os status</option>
+              <optgroup label="Situação operacional">
+                <option value="categoria:concluido">Concluídos</option><option value="categoria:andamento">Em andamento</option>
+                <option value="categoria:bloqueado">Bloqueados/pendências</option><option value="categoria:nao-iniciado">Não iniciados</option>
+              </optgroup>
+              <optgroup label="Legendas">
               {legendas.map((status) => (
                 <option key={status.id} value={status.id}>{status.nome}</option>
               ))}
-              <option value="sem-marcacao">Sem marcação</option>
+              </optgroup>
+              <option value="sem-marcacao">Sem marcação</option><option value="restantes">Ainda não concluídas</option>
             </select>
           </div>
         </div>

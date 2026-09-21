@@ -48,8 +48,10 @@ export function migrarObra(db: Firestore, usuarioId: string, obra: Obra, estoque
 }
 
 async function executarMigracao(db: Firestore, usuarioId: string, obra: Obra, estoque: boolean) {
+  if (!obra.nome.trim() || obra.nome.length > 100) throw new ErroOperacional("validacao", "Nome inválido na obra.");
   const referencia = doc(db, COLECOES.usuarios, validarId(usuarioId), COLECOES.obras, validarId(obra.id));
   const obraAtual = await getDocFromServer(referencia);
+  if (!obraAtual.exists()) throw new ErroOperacional("validacao", "A obra precisa ser provisionada pelo responsável antes da migração.");
   if (obraAtual.exists() && obraAtual.data().userId !== usuarioId) {
     throw new ErroOperacional("validacao", "Proprietário inválido na obra. Solicite revisão administrativa.");
   }

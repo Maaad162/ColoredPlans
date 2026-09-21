@@ -3,7 +3,7 @@ import { registrarErro, traduzirErro } from "./erros.ts";
 export interface MetadadosSync { fromCache: boolean; hasPendingWrites: boolean }
 export type EstadoSync = "sincronizado" | "salvando" | "offline" | "erro";
 export interface FalhaSync { chave: string; mensagem: string; tentar: () => void }
-export interface ResumoSync { estado: EstadoSync; falhas: FalhaSync[]; pendentes: number }
+export interface ResumoSync { estado: EstadoSync; falhas: FalhaSync[]; pendentes: number; aviso: FalhaSync | null }
 
 export function calcularEstadoSync(online: boolean, fontes: MetadadosSync[], pendentes: number, falhas: number): EstadoSync {
   if (falhas) return "erro";
@@ -12,7 +12,7 @@ export function calcularEstadoSync(online: boolean, fontes: MetadadosSync[], pen
   return "sincronizado";
 }
 
-// Um controlador por sessão/obra. Promises continuam acompanhadas mesmo quando
+// Um controlador por sessão; fontes e operações identificam seu contexto. Promises continuam acompanhadas mesmo quando
 // um modal fecha; snapshots nunca apagam falhas de gravação.
 export class Sincronizacao {
   private fontes = new Map<string, MetadadosSync>();
@@ -22,20 +22,33 @@ export class Sincronizacao {
   private ouvintes = new Set<() => void>();
   private pendentes = 0;
   private online = true;
-  private resumo: ResumoSync = { estado: "salvando", falhas: [], pendentes: 0 };
+  private aviso: FalhaSync | null = null;
+  private resumo: ResumoSync = { estado: "salvando", falhas: [], pendentes: 0, aviso: null };
   subscribe = (ouvinte: () => void) => { this.ouvintes.add(ouvinte); return () => { this.ouvintes.delete(ouvinte); }; };
   getSnapshot = () => this.resumo;
   private publicar() {
+    if (this.aviso && this.falhas.get(this.aviso.chave) !== this.aviso) this.aviso = null;
     this.resumo = { estado: calcularEstadoSync(this.online, [...this.fontes.values()], this.pendentes, this.falhas.size),
-      falhas: [...this.falhas.values()], pendentes: this.pendentes };
+      falhas: [...this.falhas.values()], pendentes: this.pendentes, aviso: this.aviso };
     this.ouvintes.forEach((ouvinte) => ouvinte());
   }
   conectar(online: boolean) { this.online = online; this.publicar(); }
+  fecharAviso() { this.aviso = null; this.publicar(); }
+  reabrirAviso() {
+    const recentes = [...this.falhas.values()].reverse();
+    this.aviso = recentes.find(falha => !falha.chave.startsWith("leitura:")) ?? recentes[0] ?? null;
+    this.publicar();
+  }
+  private registrarFalha(falha: FalhaSync) {
+    this.falhas.delete(falha.chave);
+    this.falhas.set(falha.chave, falha);
+    this.aviso = falha;
+  }
   observar(chave: string, metadata: MetadadosSync) { this.fontes.set(chave, metadata); this.falhas.delete(`leitura:${chave}`); this.publicar(); }
   remover(chave: string) { this.fontes.delete(chave); this.falhas.delete(`leitura:${chave}`); this.publicar(); }
   falharLeitura(chave: string, erro: unknown, tentar: () => void) {
     registrarErro(`leitura ${chave}`, erro);
-    this.falhas.set(`leitura:${chave}`, { chave: `leitura:${chave}`, mensagem: traduzirErro(erro).mensagem, tentar }); this.publicar();
+    this.registrarFalha({ chave: `leitura:${chave}`, mensagem: traduzirErro(erro).mensagem, tentar }); this.publicar();
   }
   async executar<T>(chave: string, operacao: () => Promise<T>, rotulo = "Alteração"): Promise<T> {
     const sequencia = ++this.sequencia;
@@ -48,7 +61,7 @@ export class Sincronizacao {
       registrarErro("gravação", erro);
       if ((this.versoesFalhas.get(chave) ?? 0) <= sequencia) {
         this.versoesFalhas.set(chave, sequencia);
-        this.falhas.set(chave, { chave, mensagem: `${rotulo}: ${traduzirErro(erro).mensagem}`, tentar: () => this.enfileirar(chave, operacao, rotulo) });
+        this.registrarFalha({ chave, mensagem: `${rotulo}: ${traduzirErro(erro).mensagem}`, tentar: () => this.enfileirar(chave, operacao, rotulo) });
       }
       throw erro;
     } finally { this.pendentes--; this.publicar(); }

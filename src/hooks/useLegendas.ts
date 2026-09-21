@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { criarLegendaRemota, editarLegendaRemota, excluirLegendaRemota, observarLegendas } from "../services/legendas";
 import { useControleSync } from "./useSincronizacao";
-import type { LegendaUsuario } from "../types/planta";
+import type { CategoriaExecucao, LegendaUsuario } from "../types/planta";
 
 export function useLegendas(usuarioId: string) {
   const controle = useControleSync();
@@ -18,8 +18,8 @@ export function useLegendas(usuarioId: string) {
     return () => { cancelar(); controle.remover("legendas"); };
   }, [usuarioId, controle, tentativa]);
   return { legendas, carregando,
-    criar: (nome: string, cor: string) => controle.executar("legenda:nova", () => criarLegendaRemota(usuarioId, nome, cor)),
-    editar: (id: string, nome: string, cor: string) => controle.executar(`legenda:${id}`, () => editarLegendaRemota(usuarioId, id, nome, cor)),
+    criar: (nome: string, cor: string, categoria: CategoriaExecucao) => controle.executar("legenda:nova", () => criarLegendaRemota(usuarioId, nome, cor, categoria)),
+    editar: (id: string, nome: string, cor: string, categoria: CategoriaExecucao) => controle.executar(`legenda:${id}`, () => editarLegendaRemota(usuarioId, id, nome, cor, categoria)),
     excluir: (id: string) => controle.executar(`legenda:${id}`, () => excluirLegendaRemota(usuarioId, id)),
   };
 }

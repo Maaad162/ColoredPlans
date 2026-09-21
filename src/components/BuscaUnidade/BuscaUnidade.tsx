@@ -7,8 +7,9 @@ export function BuscaUnidade({ unidades, onSelecionar }: {
 }) {
   const [numero, setNumero] = useState("");
   const consulta = numero.trim();
-  const resultados = /^\d+$/.test(consulta)
-    ? unidades.filter((unidade) => Number(unidade.numero) === Number(consulta)) : [];
+  const resultados = consulta ? unidades.filter(unidade => /^\d+$/.test(consulta)
+    ? Number(unidade.numero) === Number(consulta)
+    : `${unidade.numero} ${unidade.label ?? ""}`.toLocaleLowerCase("pt-BR").includes(consulta.toLocaleLowerCase("pt-BR"))) : [];
   return (
     <section className="busca-unidade" aria-label="Busca por unidade">
       <label htmlFor="busca-unidade">Buscar número da unidade</label>

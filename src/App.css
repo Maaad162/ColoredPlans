@@ -125,7 +125,11 @@
   padding: 18px clamp(18px, 2.6vw, 42px) 36px;
 }
 
+.sync-warning__close { flex-shrink: 0; margin-left: auto; border: 0; background: transparent; color: inherit; font-size: 24px; cursor: pointer; min-width: 36px; min-height: 36px; }
 .sync-warning {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 10px 13px;
   margin-bottom: 10px;
   border: 1px solid #e8c5c2;
@@ -1197,3 +1201,25 @@
 .history-list > li { padding: 12px 0; border-bottom: 1px solid #ddd; }
 .history-list p { margin: 4px 0; }
 .history-list summary { cursor: pointer; }
+.operation-summary { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 10px; margin: 12px 0; }
+.operation-summary > div, .materials-summary { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.operation-summary span, .unit-context label { display: block; color: #63736b; font-size: 10px; font-weight: 700; }
+.operation-summary strong { display: block; margin-top: 4px; font-size: 17px; }
+.materials-summary { grid-column: 1 / -1; }
+.materials-summary summary { cursor: pointer; font-weight: 750; }
+.materials-summary li { margin: 7px 0; }
+.unit-context { display: grid; gap: 7px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.unit-context textarea { min-height: 76px; resize: vertical; }
+.unit-context small { color: #6b7972; }
+@media (max-width: 720px) { .operation-summary { grid-template-columns: 1fr 1fr; } }
+.context-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 24px; background: #fff; border-bottom: 1px solid #dce5df; }
+.context-nav label, .work-overview label { display: flex; align-items: center; gap: 8px; }
+.context-nav select, .work-overview select { max-width: min(360px, 65vw); padding: 8px; border: 1px solid #cedbd3; border-radius: 6px; background: white; }
+.work-overview { max-width: 1300px; margin: auto; padding: 24px; }
+.overview-plant { border: 1px solid #dce5df; border-radius: 8px; background: white; margin: 16px 0; padding: 16px; }
+.overview-plant > summary { cursor: pointer; font-weight: 600; }
+.overview-services { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; margin-top: 16px; }
+.overview-services article { padding: 16px; border: 1px solid #dce5df; border-radius: 8px; }
+.overview-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.overview-counts button { cursor: pointer; padding: 8px; border: 1px solid #cedbd3; border-radius: 6px; background: #f1f6f3; color: #183d30; }
+.overview-counts button:focus-visible, .context-nav :focus-visible { outline: 3px solid #08794d; outline-offset: 2px; }

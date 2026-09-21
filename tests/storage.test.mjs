@@ -54,7 +54,7 @@ test("JSON mantém o formato e permite reimportar legendas dinâmicas", () => {
 
 test("importação rejeita versões incompatíveis antes de substituir marcações", () => {
   const arquivo = criarArquivoExportacao(unidades, {}, "Elétrica");
-  for (const version of [0, 2, 99, "1", null]) {
+  for (const version of [0, 3, 99, "1", null]) {
     assert.throws(() => validarArquivoImportacao({ ...arquivo, version }, unidades, legendas), /Versão/);
   }
 });

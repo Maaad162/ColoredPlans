@@ -1,6 +1,5 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { OBRA_PADRAO } from "./config/dados";
 import { registrarErro, traduzirErro } from "./services/erros";
 import "./styles/index.css";
 
@@ -18,7 +17,7 @@ async function iniciarAplicacao() {
 
     root.render(
       <StrictMode>
-        <App obra={OBRA_PADRAO} />
+        <App />
       </StrictMode>,
     );
   } catch (erro) {

@@ -26,6 +26,31 @@ service cloud.firestore {
       return data.get('schemaVersion', 0) in [0, 1];
     }
 
+    function acessoObra(userId, obraId) {
+      let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId);
+      return perfilPermitido(userId) && ((exists(caminho) && get(caminho).data.userId == userId)
+        || (obraId == 'obra-principal' && !exists(caminho)));
+    }
+
+    function plantaDoDocumento(data) { return data.get('plantaId', 'planta-principal'); }
+
+    function unidadesDaPlanta(userId, obraId, plantaId) {
+      let planta = get(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/plantas/$(plantaId)).data;
+      return planta.templateId == 'original-v1' ? unidadesLegadas() : get(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/templates/$(planta.templateId)).data.unidadeIds;
+    }
+
+    function plantaPermitida(userId, obraId, plantaId) {
+      return plantaId == 'planta-principal'
+        || exists(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/plantas/$(plantaId));
+    }
+
+    function unidadesLegadas() { return 'bloco-01-101,bloco-01-001,bloco-01-102,bloco-01-002,bloco-01-103,bloco-01-003,bloco-01-104,bloco-01-004,bloco-01-105,bloco-01-005,bloco-01-106,bloco-01-006,bloco-01-107,bloco-01-007,bloco-01-108,bloco-01-008,bloco-02-101,bloco-02-001,bloco-02-102,bloco-02-002,bloco-02-103,bloco-02-003,bloco-02-104,bloco-02-004,bloco-02-105,bloco-02-005,bloco-02-106,bloco-02-006,bloco-02-107,bloco-02-007,bloco-02-108,bloco-02-008,bloco-03-101,bloco-03-001,bloco-03-102,bloco-03-002,bloco-03-103,bloco-03-003,bloco-03-104,bloco-03-004,bloco-03-105,bloco-03-005,bloco-03-106,bloco-03-006,bloco-03-107,bloco-03-007,bloco-03-108,bloco-03-008,bloco-04-101,bloco-04-001,bloco-04-102,bloco-04-002,bloco-04-103,bloco-04-003,bloco-04-104,bloco-04-004,bloco-04-105,bloco-04-005,bloco-04-106,bloco-04-006,bloco-05-101,bloco-05-001,bloco-05-102,bloco-05-002,bloco-05-103,bloco-05-003,bloco-05-104,bloco-05-004,bloco-05-105,bloco-05-005,bloco-05-106,bloco-05-006,bloco-05-107,bloco-05-007,bloco-05-108,bloco-05-008,bloco-06-101,bloco-06-001,bloco-06-102,bloco-06-002,bloco-06-103,bloco-06-003,bloco-06-104,bloco-06-004,bloco-06-105,bloco-06-005,bloco-06-106,bloco-06-006,bloco-07-101,bloco-07-001,bloco-07-102,bloco-07-002,bloco-07-103,bloco-07-003,bloco-07-104,bloco-07-004,bloco-07-105,bloco-07-005,bloco-07-106,bloco-07-006'.split(','); }
+
+    function unidadesPermitidas(ids, userId, obraId, plantaId) {
+      return ids.size() <= 1000 && (plantaId == 'planta-principal'
+        ? ids.hasOnly(unidadesLegadas()) : ids.hasOnly(unidadesDaPlanta(userId, obraId, plantaId)));
+    }
+
     // Compatibilidade histórica: mesmo ID de OBRA_LEGADA_ID em config/dados.ts.
     // Não deve acompanhar uma mudança da obra padrão de inicialização.
     function obraDoKit(data) {
@@ -38,7 +63,8 @@ service cloud.firestore {
 
     function legendaValida(data, userId) {
       return schemaAtual(data) && data.userId == userId && nomeValido(data, 48)
-             && data.cor is string && data.cor.matches('^#[0-9a-fA-F]{6}$');
+             && data.cor is string && data.cor.matches('^#[0-9a-fA-F]{6}$')
+             && data.get('categoria', 'outro') in ['nao-iniciado', 'andamento', 'concluido', 'bloqueado', 'outro'];
     }
 
     function mapaManualValido(data) {
@@ -50,6 +76,7 @@ service cloud.firestore {
     function mapaKitValido(data, userId, obraId, mapaId) {
       let kit = getAfter(/databases/$(database)/documents/usuarios/$(userId)/kits/$(data.kitId)).data;
       return perfilEstoque(userId) && data.tipo == 'kit'
+             && plantaDoDocumento(kit) == plantaDoDocumento(data)
              && kit.userId == userId && obraDoKit(kit) == obraId
              && kit.mapaId == mapaId && kit.nome == data.nome
              && kit.unidadeIds == data.kitUnidadeIds;
@@ -57,6 +84,9 @@ service cloud.firestore {
 
     function mapaValido(data, userId, obraId, mapaId) {
       return schemaAtual(data) && data.userId == userId && data.obraId == obraId
+             && (data.get('equipeId', '') == '' || exists(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/equipes/$(data.equipeId)))
+             && plantaPermitida(userId, obraId, plantaDoDocumento(data))
+             && unidadesPermitidas(data.marcacoes.keys(), userId, obraId, plantaDoDocumento(data))
              && nomeValido(data, 80) && data.marcacoes is map
              && (mapaManualValido(data) || mapaKitValido(data, userId, obraId, mapaId));
     }
@@ -71,9 +101,12 @@ service cloud.firestore {
     function kitValido(data, userId, kitId) {
       let mapa = getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(data.obraId)/mapas/$(data.mapaId)).data;
       return schemaAtual(data) && data.userId == userId && nomeValido(data, 80)
+             && acessoObra(userId, data.obraId)
+             && plantaDoDocumento(mapa) == plantaDoDocumento(data)
+             && data.get('atualizadoPor', userId) == userId
              && data.obraId is string && data.obraId.matches('^[^/]+$')
              && data.materiais is list && data.materiais.size() > 0
-             && data.unidadeIds is list && data.unidadeIds.size() <= 100
+             && data.unidadeIds is list && unidadesPermitidas(data.unidadeIds, userId, data.obraId, plantaDoDocumento(data))
              && data.unidadeIds.toSet().size() == data.unidadeIds.size()
              && data.mapaId is string && data.mapaId.size() > 0
              && mapa.userId == userId && mapa.obraId == data.obraId
@@ -90,30 +123,68 @@ service cloud.firestore {
     }
 
     match /usuarios/{userId}/obras/{obraId} {
-      allow read: if perfilPermitido(userId);
-      allow create: if perfilPermitido(userId) && schemaAtual(request.resource.data)
-                    && request.resource.data.userId == userId && nomeValido(request.resource.data, 100);
+      allow get: if acessoObra(userId, obraId);
+      allow list: if perfilPermitido(userId) && resource.data.userId == userId;
+      // Obras são provisionadas administrativamente. O cliente só atualiza o marcador de migração.
+      allow create: if false;
       allow update: if perfilPermitido(userId) && resource.data.userId == userId
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['schemaVersion', 'atualizadoEm'])
                     && schemaConhecido(resource.data)
                     && schemaAtual(request.resource.data)
                     && request.resource.data.userId == userId && nomeValido(request.resource.data, 100);
       allow delete: if false;
     }
 
+    match /usuarios/{userId}/obras/{obraId}/{catalogo}/{id} {
+      allow read: if catalogo in ['plantas', 'templates', 'equipes'] && acessoObra(userId, obraId);
+      allow write: if false;
+    }
+
     match /usuarios/{userId}/obras/{obraId}/mapas/{mapaId} {
-      allow get: if perfilPermitido(userId)
+      allow get: if acessoObra(userId, obraId)
                  && (!exists(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(mapaId))
                      || resource.data.userId == userId);
-      allow list: if perfilPermitido(userId) && resource.data.userId == userId;
-      allow create: if perfilPermitido(userId) && mapaValido(request.resource.data, userId, obraId, mapaId);
-      allow update: if perfilPermitido(userId) && resource.data.userId == userId
+      allow list: if acessoObra(userId, obraId) && resource.data.userId == userId;
+      allow create: if acessoObra(userId, obraId) && mapaValido(request.resource.data, userId, obraId, mapaId);
+      allow update: if acessoObra(userId, obraId) && resource.data.userId == userId
+                    && plantaDoDocumento(request.resource.data) == plantaDoDocumento(resource.data)
                     && schemaConhecido(resource.data)
                     && mapaValido(request.resource.data, userId, obraId, mapaId)
                     && (mapaSemVinculo(userId, obraId, mapaId, resource.data)
                         || request.resource.data.get('kitId', '') == resource.data.kitId);
-      allow delete: if perfilPermitido(userId) && resource.data.userId == userId
+      allow delete: if acessoObra(userId, obraId) && resource.data.userId == userId
                     && schemaConhecido(resource.data)
                     && mapaSemVinculo(userId, obraId, mapaId, resource.data);
+    }
+
+    function contextoValido(data, userId, obraId, mapaId, unidadeId) {
+      let mapa = get(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(mapaId)).data;
+      return data.keys().hasOnly(['schemaVersion', 'userId', 'obraId', 'plantaId', 'mapaId', 'unidadeId', 'observacao',
+                                  'responsavel', 'atualizadoEm', 'atualizadoPor', 'ultimoEventoId'])
+        && schemaAtual(data) && data.userId == userId && data.obraId == obraId && data.mapaId == mapaId
+        && data.unidadeId == unidadeId && unidadesPermitidas([unidadeId], userId, obraId, plantaDoDocumento(data))
+        && mapa.userId == userId && mapa.obraId == obraId && schemaConhecido(mapa)
+        && plantaDoDocumento(data) == plantaDoDocumento(mapa)
+        && data.observacao is string && data.observacao.size() <= 240
+        && data.responsavel is string && data.responsavel.size() <= 80
+        && data.atualizadoEm == request.time && data.atualizadoPor == userId
+        && data.ultimoEventoId is string && data.ultimoEventoId.size() > 0;
+    }
+
+    function eventoDoContexto(data, userId, obraId, unidadeId) {
+      let evento = getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/historico/$(data.ultimoEventoId)).data;
+      return evento.acao == 'contexto' && evento.criadoEm == request.time
+        && evento.userId == userId && evento.obraId == obraId && evento.mapaId == data.mapaId
+        && evento.unidadeIds == [unidadeId] && plantaDoDocumento(evento) == plantaDoDocumento(data)
+        && evento.depois.observacao == data.observacao && evento.depois.responsavel == data.responsavel;
+    }
+
+    match /usuarios/{userId}/obras/{obraId}/mapas/{mapaId}/contextos/{unidadeId} {
+      allow read: if acessoObra(userId, obraId) && (!exists(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(mapaId)/contextos/$(unidadeId))
+        || resource.data.userId == userId);
+      allow create, update: if acessoObra(userId, obraId) && contextoValido(request.resource.data, userId, obraId, mapaId, unidadeId)
+        && eventoDoContexto(request.resource.data, userId, obraId, unidadeId);
+      allow delete: if false;
     }
 
     match /usuarios/{userId}/legendas/{legendaId} {
@@ -127,35 +198,36 @@ service cloud.firestore {
     }
 
     match /usuarios/{userId}/kits/{kitId} {
-      allow read: if perfilEstoque(userId) && resource.data.userId == userId;
+      allow read: if perfilEstoque(userId) && resource.data.userId == userId && acessoObra(userId, obraDoKit(resource.data));
       allow create: if perfilEstoque(userId) && kitValido(request.resource.data, userId, kitId);
       allow update: if perfilEstoque(userId) && resource.data.userId == userId
+                    && plantaDoDocumento(request.resource.data) == plantaDoDocumento(resource.data)
                     && schemaConhecido(resource.data)
                     && request.resource.data.obraId == obraDoKit(resource.data)
                     && kitValido(request.resource.data, userId, kitId)
                     && (resource.data.get('mapaId', '') == ''
                         || request.resource.data.mapaId == resource.data.mapaId);
-      allow delete: if perfilEstoque(userId) && resource.data.userId == userId
+      allow delete: if perfilEstoque(userId) && resource.data.userId == userId && acessoObra(userId, obraDoKit(resource.data))
                     && schemaConhecido(resource.data)
                     && !existsAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraDoKit(resource.data))/mapas/$(resource.data.mapaId));
     }
 
     function eventoEstruturado(data, userId, obraId) {
-      return data.keys().hasOnly(['schemaVersion', 'userId', 'obraId', 'mapaId', 'mapaNome', 'acao',
+      return data.keys().hasOnly(['schemaVersion', 'userId', 'obraId', 'plantaId', 'mapaId', 'mapaNome', 'acao',
                                   'unidadeIds', 'antes', 'depois', 'nomeAnterior', 'nomeAtual', 'criadoEm'])
         && schemaAtual(data) && data.userId == userId && data.obraId == obraId
         && data.criadoEm == request.time
         && data.mapaId is string && data.mapaId.matches('^[^/]+$')
         && data.mapaNome is string && data.mapaNome.size() <= 80
-        && data.unidadeIds is list && data.unidadeIds.size() <= 100
+        && data.unidadeIds is list && data.unidadeIds.size() <= 1000
         && data.unidadeIds.toSet().size() == data.unidadeIds.size()
-        && data.antes is map && data.depois is map && data.antes.size() <= 100 && data.depois.size() <= 100;
+        && data.antes is map && data.depois is map && data.antes.size() <= 1000 && data.depois.size() <= 1000;
     }
 
     function eventoUnidade(data, anterior, atual) {
       let id = data.unidadeIds[0];
       return data.unidadeIds.size() == 1 && id is string
-        && id.matches('^bloco-0[1-7]-[0-9]{3}$')
+        && id.matches('^[a-zA-Z0-9_-]{1,128}$')
         && data.antes.keys().hasOnly([id]) && data.antes.size() == 1
         && data.depois.keys().hasOnly([id]) && data.depois.size() == 1
         && data.antes[id] == anterior.marcacoes.get(id, null)
@@ -169,6 +241,7 @@ service cloud.firestore {
       let anterior = get(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId)).data;
       let atual = getAfter(/databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId)).data;
       return anterior.userId == userId && schemaConhecido(anterior)
+        && plantaDoDocumento(data) == plantaDoDocumento(anterior)
         && atual.userId == userId && atual.obraId == obraId && atual.ultimoEventoId == eventoId
         && data.mapaNome == anterior.nome && data.nomeAnterior == anterior.nome && data.nomeAtual == atual.nome
         && (!('kitId' in anterior) || perfilEstoque(userId))
@@ -177,6 +250,9 @@ service cloud.firestore {
             && data.antes == anterior.marcacoes && data.depois == atual.marcacoes
             && data.antes != data.depois
             && data.unidadeIds.toSet() == atual.marcacoes.diff(anterior.marcacoes).affectedKeys())
+          || (data.acao == 'equipe' && atual.nome == anterior.nome && atual.marcacoes == anterior.marcacoes
+            && data.unidadeIds == [] && data.antes == {'equipeId': anterior.get('equipeId', '')}
+            && data.depois == {'equipeId': atual.equipeId} && data.antes != data.depois)
           || (data.acao == 'renomear' && atual.nome != anterior.nome && atual.marcacoes == anterior.marcacoes
             && data.antes == {} && data.depois == {} && data.unidadeIds == []));
     }
@@ -185,6 +261,7 @@ service cloud.firestore {
       let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId);
       let atual = getAfter(caminho).data;
       return !exists(caminho) && atual.userId == userId && atual.obraId == obraId
+        && plantaDoDocumento(data) == plantaDoDocumento(atual)
         && atual.ultimoEventoId == eventoId && data.mapaNome == atual.nome && data.nomeAtual == atual.nome
         && data.nomeAnterior == null && data.unidadeIds == [] && data.antes == {} && data.depois == {};
     }
@@ -193,17 +270,34 @@ service cloud.firestore {
       let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId);
       let anterior = get(caminho).data;
       return anterior.userId == userId && schemaConhecido(anterior) && !existsAfter(caminho)
+        && plantaDoDocumento(data) == plantaDoDocumento(anterior)
         && (!('kitId' in anterior) || perfilEstoque(userId))
         && data.mapaNome == anterior.nome && data.nomeAnterior == anterior.nome && data.nomeAtual == null
         && data.antes == {} && data.depois == {} && data.unidadeIds == [];
     }
 
+    function eventoContexto(data, userId, obraId, eventoId) {
+      let unidadeId = data.unidadeIds[0];
+      let caminho = /databases/$(database)/documents/usuarios/$(userId)/obras/$(obraId)/mapas/$(data.mapaId)/contextos/$(unidadeId);
+      let anterior = exists(caminho) ? get(caminho).data : {};
+      let atual = getAfter(caminho).data;
+      return data.unidadeIds.size() == 1
+        && plantaDoDocumento(data) == plantaDoDocumento(atual)
+        && data.antes.keys().hasOnly(['observacao', 'responsavel']) && data.depois.keys().hasOnly(['observacao', 'responsavel'])
+        && atual.userId == userId && atual.obraId == obraId && atual.mapaId == data.mapaId
+        && atual.unidadeId == unidadeId && atual.ultimoEventoId == eventoId
+        && data.antes.observacao == anterior.get('observacao', '') && data.antes.responsavel == anterior.get('responsavel', '')
+        && data.depois.observacao == atual.observacao && data.depois.responsavel == atual.responsavel
+        && data.antes != data.depois;
+    }
+
     match /usuarios/{userId}/obras/{obraId}/historico/{eventoId} {
-      allow read: if perfilPermitido(userId) && resource.data.userId == userId && resource.data.obraId == obraId;
-      allow create: if perfilPermitido(userId) && eventoEstruturado(request.resource.data, userId, obraId)
-        && ((request.resource.data.acao == 'criar' && eventoCriacao(request.resource.data, userId, obraId, eventoId))
-          || (request.resource.data.acao == 'excluir' && eventoExclusao(request.resource.data, userId, obraId))
-          || (request.resource.data.acao in ['unidade', 'marcacoes', 'renomear'] && eventoEdicao(request.resource.data, userId, obraId, eventoId)));
+      allow read: if acessoObra(userId, obraId) && resource.data.userId == userId && resource.data.obraId == obraId;
+      allow create: if acessoObra(userId, obraId) && eventoEstruturado(request.resource.data, userId, obraId)
+        && (request.resource.data.acao == 'criar' ? eventoCriacao(request.resource.data, userId, obraId, eventoId)
+          : request.resource.data.acao == 'excluir' ? eventoExclusao(request.resource.data, userId, obraId)
+          : request.resource.data.acao == 'contexto' ? eventoContexto(request.resource.data, userId, obraId, eventoId)
+          : request.resource.data.acao in ['unidade', 'marcacoes', 'renomear', 'equipe'] && eventoEdicao(request.resource.data, userId, obraId, eventoId));
       allow update, delete: if false;
     }
 
