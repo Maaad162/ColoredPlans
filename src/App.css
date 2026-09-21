@@ -1207,7 +1207,7 @@
 .operation-summary span, .unit-context label { display: block; color: #63736b; font-size: 10px; font-weight: 700; }
 .operation-summary strong { display: block; margin-top: 4px; font-size: 17px; }
 .materials-summary { grid-column: 1 / -1; }
-.materials-summary summary { cursor: pointer; font-weight: 750; }
+.materials-summary summary { cursor: pointer; font-weight: 750; margin-inline-start: 16px; overflow-wrap: anywhere; }
 .materials-summary li { margin: 7px 0; }
 .unit-context { display: grid; gap: 7px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
 .unit-context textarea { min-height: 76px; resize: vertical; }

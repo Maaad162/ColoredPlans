@@ -2,6 +2,15 @@
 
 Decisão da terceira tarefa da Fase 1, em 19/09/2026.
 
+> Registro histórico da Fase 1. Para o modelo atual com múltiplas obras/plantas,
+> consulte [Evolução do produto](evolucao-produto.md) e o [README](../README.md).
+> A obra existente **Jardim das Tulipas I** conserva o ID `obra-principal`.
+> Seu nome é o campo `nome` de `usuarios/{uid}/obras/obra-principal`, atualizado
+> administrativamente nos dois documentos existentes em 21/09/2026. Somente esse
+> campo foi alterado, com máscara de escrita e precondição de atualização;
+> não houve migração de caminhos, exclusão de dados ou mudança de schema (1).
+> Renomeações futuras mantêm o ID e todas as referências.
+
 ## Conceito e modelo mínimo
 
 **Os mapas pertencem conceitualmente à obra:** representam a execução de um

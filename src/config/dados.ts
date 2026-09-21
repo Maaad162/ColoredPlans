@@ -12,11 +12,12 @@ export const COLECOES = {
 // uma futura mudança da obra selecionada na inicialização.
 export const OBRA_LEGADA_ID = "obra-principal";
 
-// Escolha transitória da inicialização; serviços e hooks recebem a obra explícita.
+// Referência compatível da obra histórica; a interface lê o nome do Firestore.
+// O ID é permanente e não acompanha renomeações administrativas.
 export const OBRA_PADRAO_ID = OBRA_LEGADA_ID;
 export const OBRA_PADRAO: Obra = {
   id: OBRA_PADRAO_ID,
-  nome: "Obra principal",
+  nome: "Jardim das Tulipas I",
 };
 
 export function lerSchemaVersion(valor: unknown): SchemaVersion {
