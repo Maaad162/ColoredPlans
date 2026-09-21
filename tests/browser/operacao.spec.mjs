@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }, info) => {
     if (!info.title.includes('sem perfil')) await setDoc(doc(db, `usuarios/${uid}`), {
       schemaVersion: 1, userId: uid, tipoConta: info.title.includes('Apontamento') ? 'apontamento' : 'estoque', email,
     });
-    await setDoc(doc(db, `usuarios/${uid}/obras/${obraId}`), { schemaVersion: 1, userId: uid, nome: 'Obra de teste' });
+    await setDoc(doc(db, `usuarios/${uid}/obras/${obraId}`), { schemaVersion: 1, userId: uid, nome: 'Jardim das Tulipas I' });
     await setDoc(doc(db, mapaPath()), { schemaVersion: 1, userId: uid, obraId, nome: 'Pintura', tipo: 'manual', kitUnidadeIds: [], marcacoes: { 'bloco-01-001': 'pendente' } });
     for (const [id, nome, cor] of [['pendente', 'Pendente', '#d9574f'], ['feito', 'Concluído', '#23875d']]) {
       await setDoc(doc(db, `usuarios/${uid}/legendas/${id}`), { schemaVersion: 1, userId: uid, nome, cor });
@@ -60,6 +60,11 @@ test.beforeEach(async ({ page }, info) => {
 test.afterEach(() => { expect(errosPagina).toEqual([]); });
 
 test('Apontamento: login, planta, estado persistido, histórico contextual e reabertura', async ({ page }) => {
+  await expect(page.getByLabel('Obra selecionada')).toHaveValue(obraId);
+  await expect(page.getByLabel('Obra selecionada').locator('option:checked')).toHaveText('Jardim das Tulipas I');
+  const obraAntes = await getDocFromServer(doc(banco, `usuarios/${uid}/obras/${obraId}`));
+  expect(obraAntes.id).toBe('obra-principal');
+  expect(obraAntes.data().nome).toBe('Jardim das Tulipas I');
   await expect(page.getByRole('heading', { name: 'Planta do empreendimento' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Central de Kits', exact: true })).toHaveCount(0);
   await selecionar(page);
@@ -72,6 +77,10 @@ test('Apontamento: login, planta, estado persistido, histórico contextual e rea
   await expect(page.getByRole('dialog')).toContainText('Por você');
   expect((await eventos()).size).toBe(1);
   await page.getByRole('button', { name: 'Fechar histórico' }).click();
+  await ambiente.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(), `usuarios/${uid}/obras/${obraId}`), { nome: 'Residencial Jardim das Tulipas I' }));
+  await expect(page.getByLabel('Obra selecionada').locator('option:checked')).toHaveText('Residencial Jardim das Tulipas I');
+  await expect(page.getByLabel('Obra selecionada')).toHaveValue(obraId);
+  expect((await eventos()).size).toBe(1);
   await page.reload();
   await selecionar(page);
   await expect(painel(page).getByRole('button', { name: 'Concluído', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -300,6 +309,15 @@ test('Kit no mapa distingue necessidade, consumo estimado, disponibilidade manua
   await expect(resumo).toContainText('necessário 1 un; consumo estimado 1 un');
   await expect(resumo).toContainText('disponível manualmente 0 un; déficit 1 un');
   await expect(resumo).toContainText('Limitante: Registro');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resumo.getByText('Ver materiais necessários para concluir').click();
+  await expect(resumo.locator('details')).not.toHaveAttribute('open', '');
+  await resumo.getByText('Ver materiais necessários para concluir').click();
+  await expect(resumo.locator('details')).toHaveAttribute('open', '');
+  expect(await page.evaluate(() => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth)).toBe(true);
+  await resumo.screenshot({ path: '.edge-validation/tulipas-materials-mobile.png' });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await resumo.screenshot({ path: '.edge-validation/tulipas-materials-desktop.png' });
   await ambiente.withSecurityRulesDisabled(async c => updateDoc(doc(c.firestore(), `usuarios/${uid}/kits/kit-operacao`), { 'materiais': [{ id: 'registro', codigoSienge: '123', descricao: 'Registro', detalhe: '', quantidadePorKit: 1, unidadeMedida: 'un', disponibilidadeManual: null }] }));
   await expect(resumo).toContainText('disponibilidade não informada');
   await expect(resumo).toContainText('Não foi possível verificar a capacidade');

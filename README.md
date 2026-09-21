@@ -66,6 +66,26 @@ As regras Firestore não controlam o endpoint de cadastro do Authentication. Par
 .\scripts\auth-fechado.ps1 -ProjetoId SEU_PROJETO -Aplicar
 ```
 
+## Identidade e nome da obra
+
+`Obra` possui `id` (identificador técnico estável) e `nome` (texto exibido), além
+dos metadados existentes. Para **Jardim das Tulipas I**, o ID preservado é
+`obra-principal`, não `jardim-das-tulipas-i`. No Firestore, o ID é a chave do
+documento `usuarios/{uid}/obras/obra-principal`; o nome fica no campo `nome`.
+A identidade completa inclui o UID, pois os dados continuam isolados por conta.
+
+Renomear uma obra significa atualizar administrativamente somente `nome` no
+documento existente. Não renomeie o documento nem derive caminhos do nome.
+Seletores, navegação e visão geral leem `obra.nome`; mapas, plantas, Kits,
+contextos, histórico e permissões continuam usando o ID. Novas obras usam
+seus próprios IDs e nomes, sem condições específicas na interface.
+
+A substituição de “Obra principal” por “Jardim das Tulipas I” é uma correção de
+metadado existente, sem migração estrutural: o schema permanece 1 e as regras
+continuam impedindo que clientes alterem o cadastro da obra. Uma atualização
+administrativa deve usar máscara somente para `nome` e precondição de versão
+do documento, preservando todos os demais campos e subcoleções.
+
 ## Plantas, templates e geometria
 
 **Planta** é uma instância física, como Torre A. **Mapa** é um serviço aplicado sobre ela, como Hidráulica. A geometria fica no template, não é duplicada por mapa. Duas plantas podem usar o mesmo template e o mesmo ID físico `apt-042`, mantendo mapas, marcações e contextos independentes.
