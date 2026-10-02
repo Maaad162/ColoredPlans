@@ -15,7 +15,7 @@ import {
 import { carregarAbaAtiva, salvarAbaAtiva } from "../services/storage";
 import { migrarObra } from "../services/migracoes";
 import { garantirMapaInicial } from "../services/inicializarMapa";
-import { db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 import { CURRENT_SCHEMA_VERSION } from "../config/dados";
 import type {
   CategoriaExecucao,
@@ -49,6 +49,7 @@ export function usePlanta(
   instancia: PlantaObra,
   definicao: PlantaDefinition,
   habilitarKits = false,
+  podeGerenciar = true,
 ) {
   const controle = useControleSync();
   const UNIDADES = useMemo(() => unidadesDaPlanta(definicao), [definicao]);
@@ -128,10 +129,10 @@ export function usePlanta(
           mapasAtuais.current = mapasRemotos;
           if (mapasRemotos.length === 0) {
             setEstadoMapas({ abaAtivaId: "", abas: [] });
-            if (!criarInicial || metadata.fromCache || metadata.hasPendingWrites) return;
+            if (!podeGerenciar || !criarInicial || metadata.fromCache || metadata.hasPendingWrites) return;
             if (!mapaInicialEmCriacao.current) {
               mapaInicialEmCriacao.current = true;
-              gravar(() => garantirMapaInicial(db, usuarioId, obra.id, instancia.id).catch((erro) => {
+              gravar(() => garantirMapaInicial(db, usuarioId, obra.id, instancia.id, auth.currentUser?.uid ?? usuarioId).catch((erro) => {
                 mapaInicialEmCriacao.current = false;
                 throw erro;
               }));
@@ -157,7 +158,7 @@ export function usePlanta(
     iniciarObservacao(false);
     if (obra.schemaVersion === CURRENT_SCHEMA_VERSION) {
       iniciarObservacao(true);
-    } else if (online) {
+    } else if (online && podeGerenciar) {
       controle.observar("preparacao", { fromCache: true, hasPendingWrites: false });
       void migrarObra(db, usuarioId, obra, habilitarKits)
         .then(() => { if (ativo) { controle.remover("preparacao"); iniciarObservacao(true); } })
@@ -171,7 +172,7 @@ export function usePlanta(
       cancelarObservacao?.();
       controle.remover("mapas"); controle.remover("preparacao");
     };
-  }, [habilitarKits, usuarioId, obra, online, gravar, registrarErro, controle, tentativa, instancia.id, definicao]);
+  }, [podeGerenciar, habilitarKits, usuarioId, obra, online, gravar, registrarErro, controle, tentativa, instancia.id, definicao]);
 
 
   const abaAtual =
@@ -325,7 +326,7 @@ export function usePlanta(
     blocos: definicao.blocos,
     unidades: UNIDADES,
     statuses: legendas,
-    definirEquipe: (equipeId: string) => { if (abaAtual) gravar(() => gravarComHistorico(db, usuarioId, obra.id, { acao: "equipe", mapa: obterMapa(abaAtual.id), equipeId }), `Equipe · ${abaAtual.nome}`); },
+    definirEquipe: (equipeId: string) => { if (abaAtual) gravar(() => gravarComHistorico(db, usuarioId, obra.id, { acao: "equipe", mapa: obterMapa(abaAtual.id), equipeId }, unidadeIds, auth.currentUser?.uid ?? usuarioId), `Equipe · ${abaAtual.nome}`); },
     abas: estadoMapas.abas,
     abaAtual,
     marcacoes,

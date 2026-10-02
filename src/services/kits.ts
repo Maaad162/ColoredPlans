@@ -13,7 +13,7 @@ import {
   type Unsubscribe,
   type SnapshotMetadata,
 } from "firebase/firestore";
-import { db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 import { CURRENT_SCHEMA_VERSION, lerObraIdDoKit, lerSchemaVersion } from "../config/dados";
 import { kitsCollection, mapaDocument } from "./caminhos";
 import { validarMateriais, validarUnidadesKit } from "./validacoes";
@@ -35,9 +35,12 @@ export function observarKits(
   aoAtualizar: (kits: Kit[], metadata: SnapshotMetadata) => void,
   aoFalhar: (erro: Error) => void,
   plantaId = PLANTA_LEGADA_ID, definicao: PlantaDefinition = DEFINICAO_LEGADA,
+  restringirObra = false,
 ): Unsubscribe {
   return onSnapshot(
-    query(kitsCollection(usuarioId), where("userId", "==", usuarioId), ...(plantaId === PLANTA_LEGADA_ID ? [] : [where("obraId", "==", obraId), where("plantaId", "==", plantaId)])),
+    query(kitsCollection(usuarioId), where("userId", "==", usuarioId),
+      ...(restringirObra || plantaId !== PLANTA_LEGADA_ID ? [where("obraId", "==", obraId)] : []),
+      ...(plantaId === PLANTA_LEGADA_ID ? [] : [where("plantaId", "==", plantaId)])),
     { includeMetadataChanges: true },
     (snapshot) => {
       try {
@@ -112,14 +115,14 @@ export async function salvarKitRemoto(
         nome,
         materiais: validarMateriais(dados.materiais),
         atualizadoEm: serverTimestamp(),
-        atualizadoPor: usuarioId,
+        atualizadoPor: auth.currentUser?.uid ?? usuarioId,
       });
       transacao.update(referenciaMapa, {
         schemaVersion: CURRENT_SCHEMA_VERSION,
         obraId,
         nome,
         atualizadoEm: serverTimestamp(),
-        atualizadoPor: usuarioId,
+        atualizadoPor: auth.currentUser?.uid ?? usuarioId,
       });
     });
     return dados.id;
@@ -138,7 +141,7 @@ export async function salvarKitRemoto(
     unidadeIds: [],
     criadoEm: serverTimestamp(),
     atualizadoEm: serverTimestamp(),
-    atualizadoPor: usuarioId,
+    atualizadoPor: auth.currentUser?.uid ?? usuarioId,
   });
   lote.set(mapaDocument(usuarioId, obraId, mapaId), {
     userId: usuarioId,
@@ -150,9 +153,9 @@ export async function salvarKitRemoto(
     kitUnidadeIds: [],
     marcacoes: {},
     criadoEm: serverTimestamp(),
-    criadoPor: usuarioId,
+    criadoPor: auth.currentUser?.uid ?? usuarioId,
     atualizadoEm: serverTimestamp(),
-    atualizadoPor: usuarioId,
+    atualizadoPor: auth.currentUser?.uid ?? usuarioId,
   });
   await lote.commit();
   return referenciaKit.id;
@@ -211,14 +214,14 @@ export async function atualizarUnidadesKit(
       obraId,
       unidadeIds: idsValidos,
       atualizadoEm: serverTimestamp(),
-      atualizadoPor: usuarioId,
+      atualizadoPor: auth.currentUser?.uid ?? usuarioId,
     });
     transacao.update(referenciaMapa, {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       obraId,
       kitUnidadeIds: idsValidos,
       atualizadoEm: serverTimestamp(),
-      atualizadoPor: usuarioId,
+      atualizadoPor: auth.currentUser?.uid ?? usuarioId,
     });
   });
 }

@@ -7,6 +7,7 @@ import { type DadosKit } from "../../services/kits";
 import type { Kit, MaterialKit } from "../../types/planta";
 
 interface CentralKitsProps {
+  podeEditarKit?: (kit: Kit) => boolean;
   definicao: PlantaDefinition;
   kitsState: ReturnType<typeof useKits>;
   onMensagem: (mensagem: string) => void;
@@ -33,7 +34,7 @@ function formatarQuantidade(valor: number) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(valor);
 }
 
-export function CentralKits({ definicao, kitsState, onMensagem, onAbrirMapa }: CentralKitsProps) {
+export function CentralKits({ definicao, kitsState, onMensagem, onAbrirMapa, podeEditarKit = () => true }: CentralKitsProps) {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [editor, setEditor] = useState<Kit | "novo" | null>(null);
   const [vinculando, setVinculando] = useState<Kit | null>(null);
@@ -99,6 +100,7 @@ export function CentralKits({ definicao, kitsState, onMensagem, onAbrirMapa }: C
           </aside>
           {selecionado && (
             <KitDetalhes
+              podeEditar={podeEditarKit(selecionado)}
               unidades={unidadesDaPlanta(definicao)}
               kit={selecionado}
               onEditar={() => setEditor(selecionado)}
@@ -142,6 +144,7 @@ export function CentralKits({ definicao, kitsState, onMensagem, onAbrirMapa }: C
 }
 
 interface KitDetalhesProps {
+  podeEditar: boolean;
   unidades: Unidade[];
   kit: Kit;
   onEditar: () => void;
@@ -150,7 +153,7 @@ interface KitDetalhesProps {
   onAbrirMapa: () => void;
 }
 
-function KitDetalhes({ unidades, kit, onEditar, onExcluir, onVincular, onAbrirMapa }: KitDetalhesProps) {
+function KitDetalhes({ unidades, kit, onEditar, onExcluir, onVincular, onAbrirMapa, podeEditar }: KitDetalhesProps) {
   const materiais = kit.materiais;
   return (
     <article className="kit-details">
@@ -158,9 +161,11 @@ function KitDetalhes({ unidades, kit, onEditar, onExcluir, onVincular, onAbrirMa
         <div><p className="eyebrow">Resumo de utilização</p><h3>{kit.nome}</h3></div>
         <div className="kit-details__actions">
           <button className="button button--secondary" type="button" onClick={onAbrirMapa} disabled={!kit.mapaId}>Abrir mapa</button>
-          <button className="button button--secondary" type="button" onClick={onEditar}>Editar</button>
-          <button className="button button--secondary" type="button" onClick={onVincular}>Selecionar unidades</button>
-          <button className="icon-button icon-button--danger" type="button" onClick={onExcluir} aria-label="Excluir Kit">×</button>
+          {podeEditar && <>
+            <button className="button button--secondary" type="button" onClick={onEditar}>Editar</button>
+            <button className="button button--secondary" type="button" onClick={onVincular}>Selecionar unidades</button>
+            <button className="icon-button icon-button--danger" type="button" onClick={onExcluir} aria-label="Excluir Kit">×</button>
+          </>}
         </div>
       </header>
       <div className="kit-metrics">

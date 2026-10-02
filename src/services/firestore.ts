@@ -7,7 +7,7 @@ import {
   type SnapshotMetadata,
 } from "firebase/firestore";
 import { lerSchemaVersion } from "../config/dados";
-import { db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 import { gravarComHistorico, validarMarcacoes } from "./historico";
 import { ErroOperacional } from "./erros";
 import { mapasCollection } from "./caminhos";
@@ -66,6 +66,7 @@ export function observarMapas(
                   : "Mapa sem nome",
               marcacoes: normalizarMarcacoes(data.marcacoes, idsDaPlanta(definicao)),
               criadoEm,
+              criadoPor: typeof data.criadoPor === "string" ? data.criadoPor : undefined,
             } satisfies MapaServico;
           })
           .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
@@ -79,15 +80,15 @@ export function observarMapas(
 }
 
 export function criarMapaRemoto(mapa: MapaServico, usuarioId: string, obraId: string) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "criar", mapa });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "criar", mapa }, undefined, auth.currentUser?.uid ?? usuarioId);
 }
 
 export function excluirMapaRemoto(mapa: MapaServico, usuarioId: string, obraId: string) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "excluir", mapa });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "excluir", mapa }, undefined, auth.currentUser?.uid ?? usuarioId);
 }
 
 export function renomearMapaRemoto(mapa: MapaServico, nome: string, usuarioId: string, obraId: string) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "renomear", mapa, nome });
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "renomear", mapa, nome }, undefined, auth.currentUser?.uid ?? usuarioId);
 }
 
 export function atualizarStatusRemoto(
@@ -98,7 +99,7 @@ export function atualizarStatusRemoto(
   obraId: string,
   unidades: readonly string[] = idsDaPlanta(DEFINICAO_LEGADA),
 ) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "unidade", mapa, unidadeId, status }, unidades);
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "unidade", mapa, unidadeId, status }, unidades, auth.currentUser?.uid ?? usuarioId);
 }
 
 export function substituirMarcacoesRemotas(
@@ -108,5 +109,5 @@ export function substituirMarcacoesRemotas(
   obraId: string,
   unidades: readonly string[] = idsDaPlanta(DEFINICAO_LEGADA),
 ) {
-  return gravarComHistorico(db, usuarioId, obraId, { acao: "marcacoes", mapa, marcacoes }, unidades);
+  return gravarComHistorico(db, usuarioId, obraId, { acao: "marcacoes", mapa, marcacoes }, unidades, auth.currentUser?.uid ?? usuarioId);
 }

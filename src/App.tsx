@@ -1,3 +1,4 @@
+import { permissoes, podeAlterarMapa } from "./services/hierarquia";
 import type { User } from "firebase/auth";
 import { useEffect, useState } from "react";
 import "./App.css";
@@ -60,8 +61,8 @@ function ContaAutenticada({ usuario, onSair }: ContaAutenticadaProps) {
     );
   }
   return (
-    <ProvedorSincronizacao key={`${usuario.uid}:${perfilState.perfil.tipoConta}`}>
-      <NavegacaoObra onSair={onSair} uid={usuario.uid} estoque={perfilState.perfil.tipoConta === "estoque"}
+    <ProvedorSincronizacao key={`${usuario.uid}:${JSON.stringify(perfilState.perfil)}`}>
+      <NavegacaoObra onSair={onSair} usuarioId={usuario.uid} uid={perfilState.perfil.hierarquia?.espacoId ?? usuario.uid} hierarquia={perfilState.perfil.hierarquia} estoque={!!perfilState.perfil.hierarquia || perfilState.perfil.tipoConta === "estoque"}
         renderizar={(obra, instancia, definicao, destino) => perfilState.perfil && <AplicacaoMapas
           key={`${obra.id}:${instancia.id}`} usuario={usuario} obra={obra} instancia={instancia}
           definicao={definicao} destino={destino} perfil={perfilState.perfil} onSair={onSair} />} />
@@ -75,22 +76,25 @@ interface AplicacaoMapasProps extends ContaAutenticadaProps {
 }
 
 function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }: AplicacaoMapasProps) {
-  const legendasState = useLegendas(usuario.uid);
-  const { dados: equipes } = useEquipes(usuario.uid, obra.id);
-  const kitsState = useKits(usuario.uid, obra.id, perfil.tipoConta === "estoque", instancia, definicao);
+  const dadosUid = perfil.hierarquia?.espacoId ?? usuario.uid;
+  const acesso = permissoes(perfil.hierarquia, perfil.tipoConta);
+  const legendasState = useLegendas(dadosUid);
+  const { dados: equipes } = useEquipes(dadosUid, obra.id);
+  const kitsState = useKits(dadosUid, obra.id, !!perfil.hierarquia || perfil.tipoConta === "estoque", instancia, definicao, !!perfil.hierarquia);
   const planta = usePlanta(
-    usuario.uid,
+    dadosUid,
     obra,
     legendasState.legendas, instancia, definicao,
     perfil.tipoConta === "estoque",
+    acesso.gerenciar,
   );
   const [zoom, setZoom] = useState(0.8);
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [secaoAtiva, setSecaoAtiva] = useState<"mapas" | "kits">("mapas");
   const [historico, setHistorico] = useState<{ mapaId?: string; unidadeId?: string } | null>(null);
   const [responsavelFiltro, setResponsavelFiltro] = useState("todos");
-  const contextosMapa = useContextosMapa(usuario.uid, obra.id, planta.abaAtual);
-  const contextoState = useContextoUnidade(usuario.uid, obra.id, planta.abaAtual, planta.unidadeSelecionada?.id,
+  const contextosMapa = useContextosMapa(dadosUid, obra.id, planta.abaAtual);
+  const contextoState = useContextoUnidade(dadosUid, obra.id, planta.abaAtual, planta.unidadeSelecionada?.id,
     contextosMapa.find(item => item.unidadeId === planta.unidadeSelecionada?.id), idsDaPlanta(definicao));
 
   const [destinoAplicado, setDestinoAplicado] = useState(false);
@@ -111,7 +115,7 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
   }, [planta.abaAtual?.id]);
 
   if (legendasState.carregando || !planta.abaAtual) return <>
-    <AuthLoading />
+    {acesso.gerenciar || legendasState.carregando ? <AuthLoading /> : <p>Nenhum mapa disponível nesta planta. Solicite o cadastro ao Engenheiro responsável.</p>}
 
 
   </>;
@@ -119,6 +123,8 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
     ? planta.unidades.filter(unidade => planta.abaAtual.kitUnidadeIds.includes(unidade.id)) : planta.unidades;
   const resumoExecucao = calcularResumoExecucao(unidadesAplicaveis, planta.marcacoes, planta.statuses);
   const kitAtivo = kitsState.kits.find(kit => kit.id === planta.abaAtual.kitId);
+  const podeEditarMapa = (mapa: typeof planta.abaAtual | undefined) => podeAlterarMapa(perfil.hierarquia, usuario.uid, mapa);
+  const gerenciarMapaAtual = acesso.gerenciar && podeEditarMapa(planta.abaAtual);
   const resumoMateriais = kitAtivo ? calcularResumoMateriais(kitAtivo, resumoExecucao) : null;
 
   async function importar(arquivo: File) {
@@ -189,22 +195,23 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
           <div className="section-nav__tabs">
             <button className="section-nav__tab" type="button" onClick={() => setHistorico({})}>Histórico da obra</button>
             <button type="button" className={secaoAtiva === "mapas" ? "section-nav__tab section-nav__tab--active" : "section-nav__tab"} onClick={() => setSecaoAtiva("mapas")}>Mapas e marcações</button>
-            {perfil.tipoConta === "estoque" && (
+            {acesso.kits && (
               <button type="button" className={secaoAtiva === "kits" ? "section-nav__tab section-nav__tab--active" : "section-nav__tab"} onClick={() => setSecaoAtiva("kits")}>Central de Kits</button>
             )}
           </div>
-          <GerenciarLegendas
+          {(!perfil.hierarquia || acesso.administrar) && <GerenciarLegendas
             legendas={legendasState.legendas}
             usoPorLegenda={planta.usoPorLegenda}
             onCriar={legendasState.criar}
             onEditar={legendasState.editar}
             onExcluir={legendasState.excluir}
             onMensagem={setMensagem}
-          />
+          />}
         </nav>
 
-        {secaoAtiva === "kits" && perfil.tipoConta === "estoque" ? (
+        {secaoAtiva === "kits" && acesso.kits ? (
           <CentralKits
+            podeEditarKit={kit => podeEditarMapa(planta.abas.find(mapa => mapa.id === kit.mapaId))}
             definicao={definicao}
             kitsState={kitsState}
             onMensagem={setMensagem}
@@ -217,6 +224,8 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
         ) : (
         <>
         <MapTabs
+          podeGerenciar={acesso.gerenciar}
+          podeEditarMapa={podeEditarMapa}
           abas={planta.abas}
           abaAtivaId={planta.abaAtual.id}
           onSelecionar={planta.selecionarAba}
@@ -231,10 +240,11 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
           }}
         />
 
-        <label className="context-nav">Equipe do serviço <select aria-label="Equipe do serviço" value={planta.abaAtual.equipeId ?? ""} onChange={e => planta.definirEquipe(e.target.value)}><option value="">Não atribuída</option>{equipes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></label>
+        <label className="context-nav">Equipe do serviço <select disabled={!gerenciarMapaAtual || (!!perfil.hierarquia && planta.abaAtual.tipo === "kit")} aria-label="Equipe do serviço" value={planta.abaAtual.equipeId ?? ""} onChange={e => planta.definirEquipe(e.target.value)}><option value="">Não atribuída</option>{equipes.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></label>
         <BuscaUnidade unidades={planta.unidades} onSelecionar={planta.localizarUnidade} />
         <button className="link-button" type="button" onClick={() => setHistorico({ mapaId: planta.abaAtual.id })}>Histórico deste mapa</button>
         <Toolbar
+          podeApontar={acesso.apontar}
           blocos={planta.blocos}
           legendas={planta.statuses}
           nomeMapaAtivo={planta.abaAtual.nome}
@@ -322,6 +332,7 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
 
           <aside className="sidebar" aria-label="Informações da planta">
             <PainelUnidade
+              podeApontar={acesso.apontar}
               key={`${planta.abaAtual.id}:${planta.unidadeSelecionada?.id ?? "sem-selecao"}`}
               onHistorico={() => setHistorico({ mapaId: planta.abaAtual.id, unidadeId: planta.unidadeSelecionada?.id })}
               unidade={planta.unidadeSelecionada}
@@ -350,7 +361,7 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
         )}
       </main>
 
-      {historico && <Historico usuarioId={usuario.uid} obraId={obra.id} legendas={planta.statuses} {...historico} onFechar={() => setHistorico(null)} />}
+      {historico && <Historico atorId={usuario.uid} usuarioId={dadosUid} obraId={obra.id} legendas={planta.statuses} {...historico} onFechar={() => setHistorico(null)} />}
       {mensagem && (
         <div className="toast" role="status" aria-live="polite">
           {mensagem}

@@ -1,4 +1,5 @@
 import type { SchemaVersion } from "../config/dados";
+import type { HierarquiaUsuario } from "../services/hierarquia";
 
 export type StatusId = string;
 export type CategoriaExecucao = "nao-iniciado" | "andamento" | "concluido" | "bloqueado" | "outro";
@@ -56,11 +57,12 @@ export interface Equipe { id: string; nome: string }
  * A imutabilidade do setor é garantida pelas regras Firestore, não pelo tipo TS.
  */
 export interface PerfilUsuario {
-  schemaVersion: SchemaVersion;
+  schemaVersion: SchemaVersion | 2;
   userId: string;
   email: string;
   tipoConta: TipoConta;
   criadoEm: string;
+  hierarquia?: HierarquiaUsuario;
 }
 
 export interface LegendaUsuario extends StatusConfig {
@@ -118,6 +120,7 @@ export interface Bloco {
 export type Marcacoes = Record<string, StatusId | null>;
 
 export interface MapaServico {
+  criadoPor?: string;
   plantaId?: string;
   equipeId?: string;
   schemaVersion: SchemaVersion;

@@ -1207,6 +1207,10 @@
 .operation-summary span, .unit-context label { display: block; color: #63736b; font-size: 10px; font-weight: 700; }
 .operation-summary strong { display: block; margin-top: 4px; font-size: 17px; }
 .materials-summary { grid-column: 1 / -1; }
+[hidden] { display: none !important; }
+.access-manager { max-height: calc(100dvh - 36px); overflow-y: auto; overflow-wrap: anywhere; }
+.access-manager li { margin: 10px 0; }
+.access-manager form input[type="checkbox"] { width: auto; height: auto; margin-right: 8px; }
 .materials-summary summary { cursor: pointer; font-weight: 750; margin-inline-start: 16px; overflow-wrap: anywhere; }
 .materials-summary li { margin: 7px 0; }
 .unit-context { display: grid; gap: 7px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }

@@ -6,6 +6,7 @@ import type { ContextoUnidade, StatusConfig, StatusId, Unidade } from "../../typ
 import { PaletaStatus } from "../PaletaStatus/PaletaStatus";
 
 interface PainelUnidadeProps {
+  podeApontar?: boolean;
   unidade: Unidade | null;
   statusId: StatusId | null;
   legendas: StatusConfig[];
@@ -16,6 +17,7 @@ interface PainelUnidadeProps {
 }
 
 export function PainelUnidade({
+  podeApontar = true,
   unidade,
   statusId,
   legendas,
@@ -75,7 +77,7 @@ export function PainelUnidade({
           </dl>
 
           <button type="button" className="link-button" onClick={onHistorico}>Histórico desta unidade</button>
-          <div className="painel-unidade__edicao">
+          <div className="painel-unidade__edicao" hidden={!podeApontar}>
             <p className="field-label">Alterar status</p>
             <PaletaStatus
               valor={statusId}
@@ -88,7 +90,7 @@ export function PainelUnidade({
             type="button"
             className="button button--ghost button--full"
             onClick={() => onDefinirStatus(null)}
-            disabled={!statusId}
+            disabled={!podeApontar || !statusId}
           >
             Limpar marcação
           </button>
@@ -96,13 +98,13 @@ export function PainelUnidade({
             void onSalvarContexto(observacao, responsavel).catch(falha => setErro(traduzirErro(falha).mensagem)).finally(() => setSalvando(false)); }}>
             <p className="field-label">Contexto deste serviço</p>
             <label htmlFor="unidade-responsavel">Responsável/equipe</label>
-            <input id="unidade-responsavel" maxLength={CONTEXTO_RESPONSAVEL_LIMITE} value={responsavel} onChange={event => setResponsavel(event.target.value)} placeholder="Ex.: Equipe hidráulica" />
+            <input readOnly={!podeApontar} id="unidade-responsavel" maxLength={CONTEXTO_RESPONSAVEL_LIMITE} value={responsavel} onChange={event => setResponsavel(event.target.value)} placeholder="Ex.: Equipe hidráulica" />
             <label htmlFor="unidade-observacao">Observação operacional</label>
-            <textarea id="unidade-observacao" maxLength={CONTEXTO_OBSERVACAO_LIMITE} value={observacao} onChange={event => setObservacao(event.target.value)} placeholder="Ex.: Aguardando chegada do registro." />
+            <textarea readOnly={!podeApontar} id="unidade-observacao" maxLength={CONTEXTO_OBSERVACAO_LIMITE} value={observacao} onChange={event => setObservacao(event.target.value)} placeholder="Ex.: Aguardando chegada do registro." />
             <small>{observacao.length}/{CONTEXTO_OBSERVACAO_LIMITE}</small>
             {contexto.atualizadoEm && <small>Atualizado em {new Date(contexto.atualizadoEm).toLocaleString("pt-BR")}</small>}
             {erro && <p className="form-error" role="alert">{erro}</p>}
-            <button className="button button--secondary button--full" type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar contexto"}</button>
+            <button className="button button--secondary button--full" type="submit" disabled={!podeApontar || salvando}>{salvando ? "Salvando…" : "Salvar contexto"}</button>
           </form>
         </>
       )}

@@ -13,7 +13,7 @@ export type ComandoMapa = { mapa: MapaServico } & (
   | { acao: "criar" | "excluir" }
 );
 export interface EventoHistorico {
-  id: string; plantaId?: string; acao: AcaoHistorico; userId: string; mapaId: string; mapaNome: string;
+  id: string; autorId?: string; plantaId?: string; acao: AcaoHistorico; userId: string; mapaId: string; mapaNome: string;
   unidadeIds: string[]; antes: Marcacoes; depois: Marcacoes;
   nomeAnterior: string | null; nomeAtual: string | null; criadoEm: string | null; pendente: boolean;
 }
@@ -30,7 +30,7 @@ export function unidadesAlteradas(antes: Marcacoes, depois: Marcacoes) {
   return [...new Set([...Object.keys(antes), ...Object.keys(depois)])].filter(id => antes[id] !== depois[id]);
 }
 
-export function gravarComHistorico(db: Firestore, uid: string, obraId: string, comando: ComandoMapa, unidades: readonly string[] = Object.keys(UNIDADE_BY_ID)): Promise<void> {
+export function gravarComHistorico(db: Firestore, uid: string, obraId: string, comando: ComandoMapa, unidades: readonly string[] = Object.keys(UNIDADE_BY_ID), autorId = uid): Promise<void> {
   const { mapa, acao } = comando;
   if (mapa.userId !== uid || mapa.obraId !== obraId) throw new ErroOperacional("permissao", "O mapa pertence a outra conta ou obra.");
   const referencia = doc(db, COLECOES.usuarios, validarId(uid), COLECOES.obras, validarId(obraId), COLECOES.mapas, validarId(mapa.id));
@@ -39,7 +39,7 @@ export function gravarComHistorico(db: Firestore, uid: string, obraId: string, c
   let antes: Marcacoes = {}, depois: Marcacoes = {}, unidadeIds: string[] = [];
   let nomeAtual: string | null = mapa.nome;
   const escopoPlanta = mapa.plantaId ? { plantaId: mapa.plantaId } : {};
-  const metadados = { schemaVersion: CURRENT_SCHEMA_VERSION, obraId, ...escopoPlanta, atualizadoEm: serverTimestamp(), atualizadoPor: uid, ultimoEventoId: evento.id };
+  const metadados = { schemaVersion: CURRENT_SCHEMA_VERSION, obraId, ...escopoPlanta, atualizadoEm: serverTimestamp(), atualizadoPor: autorId, ultimoEventoId: evento.id };
   if (acao === "unidade") {
     antes = { [comando.unidadeId]: mapa.marcacoes[comando.unidadeId] ?? null };
     depois = { [comando.unidadeId]: comando.status };
@@ -60,7 +60,7 @@ export function gravarComHistorico(db: Firestore, uid: string, obraId: string, c
     lote.update(referencia, { ...metadados, equipeId: comando.equipeId });
   } else if (acao === "criar") {
     lote.set(referencia, { ...metadados, userId: uid, tipo: "manual", kitUnidadeIds: [], nome: mapa.nome,
-      marcacoes: {}, criadoEm: serverTimestamp(), criadoPor: uid });
+      marcacoes: {}, criadoEm: serverTimestamp(), criadoPor: autorId });
   } else if (acao === "renomear") {
     nomeAtual = comando.nome.trim();
     if (!nomeAtual || nomeAtual.length > 48) throw new ErroOperacional("validacao", "Informe um nome de mapa com até 48 caracteres.");
@@ -68,6 +68,6 @@ export function gravarComHistorico(db: Firestore, uid: string, obraId: string, c
     lote.update(referencia, { ...metadados, nome: nomeAtual });
   } else { nomeAtual = null; lote.delete(referencia); }
   lote.set(evento, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, ...escopoPlanta, mapaId: mapa.id, mapaNome: mapa.nome,
-    acao, unidadeIds, antes, depois, nomeAnterior: acao === "criar" ? null : mapa.nome, nomeAtual, criadoEm: serverTimestamp() });
+    ...(autorId !== uid ? { autorId } : {}), acao, unidadeIds, antes, depois, nomeAnterior: acao === "criar" ? null : mapa.nome, nomeAtual, criadoEm: serverTimestamp() });
   return lote.commit();
 }

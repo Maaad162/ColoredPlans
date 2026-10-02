@@ -28,15 +28,15 @@ function converter(documento: QueryDocumentSnapshot): EventoHistorico {
     || !Array.isArray(data.unidadeIds) || !data.unidadeIds.every((id: unknown) => typeof id === "string")
     || (data.nomeAnterior !== null && typeof data.nomeAnterior !== "string")
     || (data.nomeAtual !== null && typeof data.nomeAtual !== "string")) throw new Error("Histórico inválido.");
-  return { id: documento.id, plantaId: plantaDoDocumento(data.plantaId), acao: lerAcao(data.acao), userId: data.userId, mapaId: data.mapaId, mapaNome: data.mapaNome,
+  return { id: documento.id, autorId: typeof data.autorId === "string" ? data.autorId : data.userId, plantaId: plantaDoDocumento(data.plantaId), acao: lerAcao(data.acao), userId: data.userId, mapaId: data.mapaId, mapaNome: data.mapaNome,
     unidadeIds: data.unidadeIds, antes: lerMarcacoes(data.antes), depois: lerMarcacoes(data.depois),
     nomeAnterior: data.nomeAnterior, nomeAtual: data.nomeAtual,
     criadoEm: data.criadoEm instanceof Timestamp ? data.criadoEm.toDate().toISOString() : null,
     pendente: documento.metadata.hasPendingWrites };
 }
 
-interface Props { usuarioId: string; obraId: string; legendas: StatusConfig[]; mapaId?: string; unidadeId?: string; onFechar: () => void }
-export function Historico({ usuarioId, obraId, legendas, mapaId, unidadeId, onFechar }: Props) {
+interface Props { atorId?: string; usuarioId: string; obraId: string; legendas: StatusConfig[]; mapaId?: string; unidadeId?: string; onFechar: () => void }
+export function Historico({ usuarioId, atorId = usuarioId, obraId, legendas, mapaId, unidadeId, onFechar }: Props) {
   const controle = useControleSync();
   const [eventos, setEventos] = useState<EventoHistorico[]>([]);
   const [cursores, setCursores] = useState<QueryDocumentSnapshot[]>([]);
@@ -67,13 +67,13 @@ export function Historico({ usuarioId, obraId, legendas, mapaId, unidadeId, onFe
   return <div className="modal-backdrop">
     <section className="modal-card modal-card--wide history-panel" role="dialog" aria-modal="true" aria-labelledby="historico-titulo">
       <div className="manager-heading"><div><h2 id="historico-titulo">{unidadeId ? "Histórico da unidade" : mapaId ? "Histórico do mapa" : "Histórico da obra"}</h2>
-        <p>Registros operacionais desta conta. {doCache ? "Exibindo dados locais; podem estar incompletos." : "Confirmados pelo servidor, salvo indicação de pendência."}</p></div>
+        <p>Registros operacionais desta obra. {doCache ? "Exibindo dados locais; podem estar incompletos." : "Confirmados pelo servidor, salvo indicação de pendência."}</p></div>
         <button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar histórico" autoFocus>×</button></div>
       {carregando ? <p role="status">Carregando histórico…</p> : <>
         {!eventos.length && <p>Nenhum evento nesta consulta. Alterações anteriores à ativação do histórico não foram reconstruídas.</p>}
         <ol className="history-list" aria-label="Eventos do histórico">{eventos.map(evento => <li key={evento.id}>
           <strong>{evento.mapaNome}</strong> · {evento.plantaId} · {evento.pendente ? "Pendente de sincronização" : evento.criadoEm ? new Date(evento.criadoEm).toLocaleString("pt-BR") : "Data indisponível"}
-          <p>Por {evento.userId === usuarioId ? "você" : evento.userId}</p>
+          <p>Por {evento.autorId === atorId ? "você" : evento.autorId}</p>
           {evento.acao === "criar" && <p>Mapa criado: {evento.nomeAtual}</p>}
           {evento.acao === "excluir" && <p>Mapa excluído: {evento.nomeAnterior}</p>}
           {evento.acao === "renomear" && <p>{evento.nomeAnterior} → {evento.nomeAtual}</p>}

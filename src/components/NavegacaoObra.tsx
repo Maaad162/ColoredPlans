@@ -4,9 +4,13 @@ import { useControleSync, useResumoSync } from "../hooks/useSincronizacao";
 import { FalhasSincronizacao, IndicadorSincronizacao } from "./EstadoSincronizacao";
 import { VisaoObra } from "./VisaoObra";
 import type { Obra, PlantaDefinition, PlantaObra, StatusFilter } from "../types/planta";
+import { NOMES_NIVEIS, type HierarquiaUsuario } from "../services/hierarquia";
+import { GerenciarAcessos } from "./GerenciarAcessos";
 
 export interface DestinoMapa { plantaId: string; mapaId: string; filtro: StatusFilter }
 interface Props {
+  hierarquia?: HierarquiaUsuario;
+  usuarioId?: string;
   uid: string; estoque: boolean; onSair: () => Promise<void>;
   renderizar: (obra: Obra, planta: PlantaObra, definicao: PlantaDefinition, destino: DestinoMapa | null) => ReactNode;
 }
@@ -14,16 +18,16 @@ function lerPreferencia(chave: string) { try { return localStorage.getItem(chave
 function salvarPreferencia(chave: string, valor: string) { try { localStorage.setItem(chave, valor); } catch { /* Preferência opcional. */ } }
 export function NavegacaoObra(props: Props) {
   const controle = useControleSync();
-  const { dados: obras, carregando } = useObras(props.uid);
+  const { dados: obras, carregando } = useObras(props.uid, props.hierarquia);
   const chave = `coloredplans:obra:${props.uid}`;
   const [selecionada, selecionar] = useState(() => lerPreferencia(chave));
   const { pendentes } = useResumoSync();
   const obra = obras.find(o => o.id === selecionada) ?? obras.find(o => o.status !== "arquivada") ?? obras[0];
   useEffect(() => { if (obra) salvarPreferencia(chave, obra.id); }, [chave, obra]);
   return <>
-    <div className="context-nav"><label>Obra <select aria-label="Obra selecionada" value={obra?.id ?? ""} disabled={!!pendentes} onChange={e => selecionar(e.target.value)}>
+    <div className="context-nav">{props.hierarquia && <span>{NOMES_NIVEIS[props.hierarquia.nivel]}</span>}<label>Obra <select aria-label="Obra selecionada" value={obra?.id ?? ""} disabled={!!pendentes} onChange={e => selecionar(e.target.value)}>
       {obras.map(o => <option key={o.id} value={o.id}>{o.nome}{o.status === "arquivada" ? " · Arquivada" : ""}</option>)}
-    </select></label><IndicadorSincronizacao /><button type="button" className="header-logout" onClick={() => controle.enfileirar("sessao:sair", props.onSair, "Saída da conta")}>Sair</button></div>
+    </select></label>{props.hierarquia?.nivel === "dev" && props.usuarioId && <GerenciarAcessos espacoId={props.uid} usuarioId={props.usuarioId} obras={obras} />}<IndicadorSincronizacao /><button type="button" className="header-logout" onClick={() => controle.enfileirar("sessao:sair", props.onSair, "Saída da conta")}>Sair</button></div>
     <FalhasSincronizacao />
     {carregando ? <p role="status">Carregando obras…</p> : obra ? <ObraSelecionada key={obra.id} {...props} obra={obra} />
       : <p>Nenhuma obra disponível. Solicite o provisionamento ao responsável técnico.</p>}
@@ -48,7 +52,7 @@ function ObraSelecionada({ obra, ...props }: Props & { obra: Obra }) {
       <button type="button" className="button button--secondary" disabled={!!pendentes} onClick={() => setVisao(v => !v)}>{visao ? "Voltar à planta" : "Visão geral da obra"}</button>
       {obra.status === "arquivada" && <span>Obra arquivada · dados preservados</span>}
     </nav>
-    {visao ? <VisaoObra uid={props.uid} obra={obra} plantas={plantas} estoque={props.estoque} onAbrir={d => { selecionar(d.plantaId); setDestino(d); setVisao(false); }} />
+    {visao ? <VisaoObra uid={props.uid} obra={obra} plantas={plantas} estoque={props.estoque} restringirObra={!!props.hierarquia} onAbrir={d => { selecionar(d.plantaId); setDestino(d); setVisao(false); }} />
       : planta && <PlantaSelecionada key={`${planta.id}:${planta.templateId}`} {...props} obra={obra} planta={planta} destino={destino} />}
   </>;
 }

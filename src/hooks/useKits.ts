@@ -5,7 +5,7 @@ import { idsDaPlanta } from "../services/geometria";
 import type { PlantaObra, PlantaDefinition } from "../types/planta";
 import type { Kit } from "../types/planta";
 
-export function useKits(usuarioId: string, obraId: string, habilitado: boolean, planta: PlantaObra, definicao: PlantaDefinition) {
+export function useKits(usuarioId: string, obraId: string, habilitado: boolean, planta: PlantaObra, definicao: PlantaDefinition, restringirObra = false) {
   const controle = useControleSync();
   const [kits, setKits] = useState<Kit[]>([]);
   const [carregando, setCarregando] = useState(habilitado);
@@ -18,9 +18,9 @@ export function useKits(usuarioId: string, obraId: string, habilitado: boolean, 
       setKits(atuais); setCarregando(false); controle.observar(chave, metadata);
     }, (falha) => {
       setCarregando(false); controle.falharLeitura(chave, falha, () => setTentativa(v => v + 1));
-    }, planta.id, definicao);
+    }, planta.id, definicao, restringirObra);
     return () => { cancelar(); controle.remover(chave); };
-  }, [habilitado, usuarioId, obraId, controle, tentativa, planta.id, definicao]);
+  }, [habilitado, usuarioId, obraId, controle, tentativa, planta.id, definicao, restringirObra]);
   return { kits, carregando,
     salvar: (dados: DadosKit) => controle.executar(`kit:${obraId}:${planta.id}:${dados.id ?? "novo"}`, () => salvarKitRemoto(usuarioId, obraId, dados, planta.id)),
     excluir: (id: string) => controle.executar(`kit:${obraId}:${planta.id}:${id}`, () => excluirKitRemoto(usuarioId, obraId, id)),

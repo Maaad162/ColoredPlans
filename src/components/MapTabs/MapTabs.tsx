@@ -3,6 +3,8 @@ import type { MapaServico } from "../../types/planta";
 import { Icon } from "../Icon";
 
 interface MapTabsProps {
+  podeGerenciar?: boolean;
+  podeEditarMapa?: (mapa: MapaServico) => boolean;
   abas: MapaServico[];
   abaAtivaId: string;
   onSelecionar: (id: string) => void;
@@ -12,6 +14,8 @@ interface MapTabsProps {
 }
 
 export function MapTabs({
+  podeGerenciar = true,
+  podeEditarMapa = () => true,
   abas,
   abaAtivaId,
   onSelecionar,
@@ -105,7 +109,7 @@ export function MapTabs({
                     {totalMarcado}
                   </small>
                 </button>
-                {aba.tipo === "manual" && (
+                {podeGerenciar && podeEditarMapa(aba) && aba.tipo === "manual" && (
                   <button type="button" className="map-tab__rename"
                     title={`Renomear ${aba.nome}`} aria-label={`Renomear ${aba.nome}`}
                     onClick={() => {
@@ -116,7 +120,7 @@ export function MapTabs({
                     <Icon name="paint" size={14} />
                   </button>
                 )}
-                {abas.length > 1 && aba.tipo !== "kit" && (
+                {podeGerenciar && podeEditarMapa(aba) && abas.length > 1 && aba.tipo !== "kit" && (
                   <button
                     type="button"
                     className="map-tab__delete"
@@ -132,7 +136,7 @@ export function MapTabs({
           })}
           <button
             type="button"
-            className="map-tab map-tab--nova"
+            className="map-tab map-tab--nova" hidden={!podeGerenciar}
             onClick={() => setModalAberto(true)}
           >
             <Icon name="plus" size={15} />

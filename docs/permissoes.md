@@ -1,5 +1,10 @@
 # Perfis e permissões — Fase 1
 
+> Este documento descreve os perfis legados (schema 0/1). A hierarquia do perfil
+> v2, com espaço compartilhado, concessões explícitas e gestão de acessos pelo
+> DEV, está documentada em [TEST_USERS.md](TEST_USERS.md). A compatibilidade
+> legada é preservada; não há migração automática para o modelo compartilhado.
+
 ## Modelo e autoridade
 
 O modelo único da aplicação é `PerfilUsuario` em

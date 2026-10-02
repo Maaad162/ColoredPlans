@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 import { observarContexto, observarContextosMapa, salvarContexto } from "../services/contextos";
 import { useControleSync } from "./useSincronizacao";
 import type { ContextoUnidade, MapaServico } from "../types/planta";
@@ -20,7 +20,7 @@ export function useContextoUnidade(uid: string, obraId: string, mapa: MapaServic
   }, [uid, obraId, mapa, unidadeId, contextoConhecido, controle, tentativa]);
   return { contexto, salvar: (observacao: string, responsavel: string) => {
     if (!mapa || !unidadeId) return Promise.resolve();
-    return controle.executar(`contexto:${obraId}:${mapa.id}:${unidadeId}`, () => salvarContexto(db, uid, obraId, mapa, unidadeId, contexto, { observacao, responsavel }, unidades), `Contexto da unidade ${unidadeId}`);
+    return controle.executar(`contexto:${obraId}:${mapa.id}:${unidadeId}`, () => salvarContexto(db, uid, obraId, mapa, unidadeId, contexto, { observacao, responsavel }, unidades, auth.currentUser?.uid ?? uid), `Contexto da unidade ${unidadeId}`);
   } };
 }
 

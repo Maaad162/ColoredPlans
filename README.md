@@ -1,6 +1,6 @@
 # ColoredPlans
 
-Versão **1.6.0 — Evolução do produto (Fase 4)**.
+Versão **1.7.0 — Hierarquia, colaboração e contas de teste**.
 
 > Olhar a planta e entender imediatamente o que foi feito, o que falta e o que é necessário para continuar.
 
@@ -10,7 +10,7 @@ A planta é o centro da aplicação. A visão geral ajuda a encontrar um serviç
 
 React, React DOM, TypeScript estrito, Vite, Firebase Authentication (e-mail/senha), Cloud Firestore e Firebase Hosting. A representação visual usa SVG controlado pelo React e CSS, sem CAD, SVG arbitrário, PDF ou imagens de fundo importadas. Node executa testes de domínio; Firebase Emulator e `@firebase/rules-unit-testing` verificam regras e transações; Playwright testa o navegador real; ESLint verifica o código e os hooks.
 
-Não há servidor próprio, painel administrativo, Cloud Functions, Storage, Analytics ou integração real com SIENGE. O lockfile registra as dependências instaladas.
+Não há servidor próprio, Cloud Functions, Storage, Analytics ou integração real com SIENGE. O DEV dispõe de gestão restrita de acessos já provisionados; contas Auth e mudanças de nível continuam administrativas. O lockfile registra as dependências instaladas.
 
 ## Hierarquia e propriedade
 
@@ -28,7 +28,7 @@ Authentication: UID autenticado
 
 Uma obra tem ID, nome e status `ativa` ou `arquivada`. O status ausente no legado equivale a ativa. Obra arquivada continua selecionável e seus dados/histórico permanecem disponíveis; não é escolhida como primeira opção quando há obra ativa. Arquivamento não exclui dados nem bloqueia a execução: é uma classificação administrativa.
 
-**O isolamento continua por usuário.** Obras com o mesmo ID em duas contas não compartilham mapas, Kits ou legendas. Não se inferiu que esses cadastros representam a mesma obra física, nem se mesclaram registros existentes. A autorização é o perfil válido e a obra cadastrada administrativamente no espaço daquele UID. Não há entidade empresa nem membros colaborativos nesta versão; um documento de membro ou claim inventado não concede acesso.
+**O isolamento é por espaço.** Perfis hierárquicos compartilham dados somente quando provisionados no mesmo `espacoId`, respeitando as obras atribuídas e o nível. Perfis legados mantêm seus dados privados. Obras com o mesmo ID em espaços diferentes continuam independentes; registros existentes não são mesclados. Um documento de membro ou claim inventado não concede acesso.
 
 A aplicação lista os metadados das obras da conta, seleciona uma obra e carrega seu catálogo de plantas. Ao trocar de contexto, remonta os hooks operacionais e cancela os listeners anteriores. Preferências locais nunca concedem autorização. A obra/planta selecionadas são lembradas por UID; o mapa ativo é lembrado por UID, obra e planta. O fallback da preferência antiga só pode selecionar um mapa que exista na planta carregada.
 
@@ -36,16 +36,18 @@ A aplicação lista os metadados das obras da conta, seleciona uma obra e carreg
 
 Não existe cadastro público na interface. Contas são criadas administrativamente no Authentication; antes da entrega da conta, o responsável define o setor em `usuarios/{uid}`. O usuário final não escolhe nem altera seu setor.
 
-As regras negam **toda escrita de cliente no perfil**, inclusive criação, merge, substituição e exclusão. O modelo canônico é `PerfilUsuario`, com `tipoConta: "apontamento" | "estoque"`; não há um segundo modelo de role. Perfil ausente/inválido mostra “Conta aguardando liberação” e também impede acesso pelo SDK/DevTools.
+O modelo canônico é `PerfilUsuario`, com setor `tipoConta: "apontamento" | "estoque"` e, no perfil v2, nível hierárquico independente. As Rules proíbem criação/exclusão de perfis e autopromoção pelo cliente. Somente DEV pode atualizar setor, superior e obras de outros perfis v2 já provisionados no mesmo espaço; não pode editar o próprio perfil nem outro DEV. Perfil ausente/inválido mostra “Conta aguardando liberação” e também impede acesso pelo SDK/DevTools. A matriz v2 está em [Contas de teste](docs/TEST_USERS.md).
+
+A tabela abaixo descreve a compatibilidade dos **perfis legados (schema 0/1)**:
 
 | Setor | Responsabilidades |
 | --- | --- |
 | Apontamento | Mapas manuais, marcações, contexto das unidades, atribuição de equipe existente, filtros, visão geral, legendas, importação/exportação e histórico autorizado. |
 | Estoque | As mesmas funções e composição dos Kits, disponibilidade manual auxiliar, unidades aplicáveis e mapas vinculados aos Kits. |
 
-Mapas de Kit existentes continuam legíveis na própria conta após troca administrativa de setor, mas alterar o mapa vinculado exige Estoque. Apontamento não lê documentos dos Kits. Obras, plantas, templates e cadastro de equipes são administrativos. Não há tela de gestão de usuários.
+Nos perfis legados, mapas de Kit existentes continuam legíveis na própria conta após troca administrativa de setor, mas alterar o mapa vinculado exige Estoque; Apontamento não lê documentos dos Kits. Nos perfis v2, a consulta de Kits acompanha o acesso à obra e a gestão segue a matriz hierárquica. Obras, plantas, templates e cadastro de equipes são administrativos.
 
-Provisionamento do perfil pelo Console/Admin SDK:
+Formato do perfil legado provisionado pelo Console/Admin SDK (para v2, consulte a migração administrativa em `docs/TEST_USERS.md`):
 
 ```text
 usuarios/{uid}
@@ -56,7 +58,7 @@ usuarios/{uid}
   criadoEm: timestamp
 ```
 
-Legendas iniciais podem ser provisionadas a partir de `src/config/statuses.ts`; a interface também permite criá-las. O frontend não cadastra padrões automaticamente.
+Legendas iniciais podem ser provisionadas a partir de `src/config/statuses.ts`; a interface permite criá-las aos perfis legados e ao DEV do espaço compartilhado. O frontend não cadastra padrões automaticamente.
 
 As regras Firestore não controlam o endpoint de cadastro do Authentication. Para bloquear signup direto, o projeto deve configurar `client.permissions.disabledUserSignup = true`. O script administrativo existente verifica isso sem alterar por padrão:
 
@@ -119,6 +121,36 @@ O token precisa de IAM administrativo no projeto. Não o coloque em `VITE_*`, JS
 Novas obras recebem `plantaLegada: false`. Obras antigas sem esse campo continuam incluindo a planta original, mesmo após adicionar novas plantas. Não altere esse marcador em uma obra com mapas antigos. Arquivar consiste em atualizar `status` para `arquivada` administrativamente; não existe exclusão de obra pelo cliente.
 
 ## Firestore real
+
+### Hierarquia de usuários (perfil v2)
+
+Os níveis `tecnico`, `engenheiro`, `coordenador`, `gestor` e `dev` são separados
+do setor `tipoConta` (`apontamento`/`estoque`). O perfil v2 acrescenta `nivel`,
+`espacoId`, `superiorId` e `obraIds`. Técnico, Engenheiro e Coordenador acessam
+as obras explicitamente atribuídas; Gestor e DEV abrangem todas do mesmo espaço.
+O vínculo com o superior não concede obras automaticamente.
+
+Técnicos de Apontamento e Estoque são supervisionados pelo mesmo Engenheiro,
+que consulta ambos sem alternar setor. Técnicos criam mapas e apontam;
+Engenheiro não altera marcações/contextos e só administra mapas/Kits próprios
+(autoria `criadoPor`). Mapas e Kits dos Técnicos são somente consulta para ele.
+Técnico Estoque, Engenheiro e Coordenador gerenciam Kits; para DEV, Kits exigem
+setor Estoque. A matriz completa e os testes locais estão em `docs/TEST_USERS.md`.
+
+O espaço usa o UID estrutural existente: dados operacionais continuam nos mesmos
+caminhos `usuarios/{espacoId}/obras/{obraId}`, sem cópias por colaborador. Autoria
+no histórico (`autorId`) e nas atualizações usa o UID de quem realizou a ação.
+Jardim das Tulipas I mantém o ID `obra-principal`.
+
+Perfis 0/1 mantêm a operação privada anterior até uma migração administrativa
+explícita. Só os perfis migram para 2; o schema operacional continua 1.
+O DEV pode editar setor, superior e obras de outros perfis já provisionados no
+seu espaço; nível, contas Auth e o próprio perfil exigem administração externa.
+
+Para testar os cinco níveis com login real no Auth Emulator, execute
+`npm run dev:test-users`. Credenciais locais, matriz de permissões, limites e
+migração estão em [docs/TEST_USERS.md](docs/TEST_USERS.md). O seed é exclusivo de
+emuladores locais `demo-coloredplans` e não altera produção.
 
 ```text
 usuarios/{uid}
@@ -211,7 +243,7 @@ Arquivos antigos versão 1 e sem versão continuam aceitos: bloco/número são r
 
 ## Schema e compatibilidade
 
-O schema remoto continua **1**, com leitura de `0 | 1`. A Fase 4 acrescenta campos e coleções sem mover documentos ou tornar os registros antigos inválidos. A versão da definição e a versão do arquivo exportado são contratos independentes. Não houve migração destrutiva nem regravação em massa.
+O schema dos dados operacionais continua **1**, com leitura de `0 | 1`. O perfil hierárquico usa **2**, com migração administrativa explícita e idempotente; perfis legados permanecem compatíveis. A versão da aplicação (1.7.0), da definição geométrica e do arquivo exportado são contratos independentes. Não houve migração destrutiva nem regravação em massa.
 
 A adaptação de leitura associa `plantaId` ausente a `planta-principal`; `null`, vazio e IDs inválidos são erros, não fallback. Novos mapas/Kits e eventos escrevem a planta explicitamente. Materiais antigos continuam com unidade `un` e disponibilidade desconhecida. Todos os IDs usados no histórico são conservados.
 

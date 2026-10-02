@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, where, type QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, doc, documentId, onSnapshot, query, where, type QueryDocumentSnapshot } from "firebase/firestore";
+import type { HierarquiaUsuario } from "../services/hierarquia";
 import { lerSchemaVersion } from "../config/dados";
 import { obraDocument, perfilDocument } from "../services/caminhos";
 import { DEFINICAO_LEGADA, PLANTA_LEGADA, TEMPLATE_LEGADO_ID, plantaDoDocumento, validarDefinicao } from "../services/geometria";
@@ -24,24 +25,26 @@ function lerPlanta(doc: QueryDocumentSnapshot): PlantaObra {
 }
 function lerEquipe(doc: QueryDocumentSnapshot): Equipe { return { id: doc.id, nome: nome(doc.data().nome) }; }
 
-function useCatalogo<T>(uid: string, obraId: string | null, colecao: "obras" | "plantas" | "equipes", ler: (doc: QueryDocumentSnapshot) => T) {
+function useCatalogo<T>(uid: string, obraId: string | null, colecao: "obras" | "plantas" | "equipes", ler: (doc: QueryDocumentSnapshot) => T, ids?: string[]) {
   const controle = useControleSync();
   const [dados, setDados] = useState<T[]>([]), [carregando, setCarregando] = useState(true), [tentativa, setTentativa] = useState(0), [falhou, setFalhou] = useState(false);
   useEffect(() => {
     let ativo = true;
+    if (ids && !ids.length) { setDados([]); setCarregando(false); return; }
     const chave = `catalogo:${uid}:${obraId ?? ""}:${colecao}`;
     controle.observar(chave, { fromCache: true, hasPendingWrites: false });
     const ref = collection(obraId ? obraDocument(uid, obraId) : perfilDocument(uid), colecao);
     const falhar = (erro: unknown) => { if (ativo) { setDados([]); setFalhou(true); setCarregando(false); controle.falharLeitura(chave, erro, () => setTentativa(v => v + 1)); } };
-    const cancelar = onSnapshot(query(ref, ...(colecao === "obras" ? [where("userId", "==", uid)] : [])), { includeMetadataChanges: true }, snapshot => {
+    const cancelar = onSnapshot(query(ref, ...(colecao === "obras" ? [where("userId", "==", uid)] : []), ...(ids ? [where(documentId(), "in", ids)] : [])), { includeMetadataChanges: true }, snapshot => {
       if (!ativo) return;
       try { const proximos = snapshot.docs.map(ler); setDados(anteriores => JSON.stringify(anteriores) === JSON.stringify(proximos) ? anteriores : proximos); setFalhou(false); setCarregando(false); controle.observar(chave, snapshot.metadata); } catch (erro) { falhar(erro); }
     }, falhar);
     return () => { ativo = false; cancelar(); controle.remover(chave); };
-  }, [uid, obraId, colecao, ler, controle, tentativa]);
+  }, [uid, obraId, colecao, ler, controle, tentativa, ids]);
   return { dados, carregando, falhou };
 }
-export const useObras = (uid: string) => useCatalogo(uid, null, "obras", lerObra);
+export const useObras = (uid: string, hierarquia?: HierarquiaUsuario) => useCatalogo(uid, null, "obras", lerObra,
+  hierarquia && !["gestor", "dev"].includes(hierarquia.nivel) ? hierarquia.obraIds : undefined);
 export const usePlantas = (uid: string, obraId: string, incluirLegada = true) => {
   const resultado = useCatalogo(uid, obraId, "plantas", lerPlanta);
   // A ausência do catálogo é o formato histórico. A planta original nunca muda de ID.

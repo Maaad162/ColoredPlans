@@ -7,6 +7,7 @@ import { lerSchemaVersion } from "../config/dados";
 import { tipoContaValido, type PerfilUsuario } from "../types/planta";
 import { perfilDocument } from "./caminhos";
 import { ErroOperacional } from "./erros";
+import { lerHierarquia } from "./hierarquia";
 
 export function observarPerfil(
   usuarioId: string,
@@ -27,7 +28,8 @@ export function observarPerfil(
       }
       try {
         aoAtualizar({
-          schemaVersion: lerSchemaVersion(data.schemaVersion),
+          schemaVersion: data.schemaVersion === 2 ? 2 : lerSchemaVersion(data.schemaVersion),
+          ...(data.schemaVersion === 2 ? { hierarquia: lerHierarquia(data, usuarioId) } : {}),
           userId: usuarioId,
           email: typeof data.email === "string" ? data.email : "",
           tipoConta: data.tipoConta,

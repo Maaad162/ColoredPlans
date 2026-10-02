@@ -9,6 +9,7 @@ import { Icon } from "../Icon";
 import { PaletaStatus } from "../PaletaStatus/PaletaStatus";
 
 interface ToolbarProps {
+  podeApontar?: boolean;
   blocos: Bloco[];
   legendas: StatusConfig[];
   nomeMapaAtivo: string;
@@ -31,6 +32,7 @@ interface ToolbarProps {
 }
 
 export function Toolbar({
+  podeApontar = true,
   blocos,
   legendas,
   nomeMapaAtivo,
@@ -103,7 +105,7 @@ export function Toolbar({
         </div>
       </div>
 
-      <div className="toolbar__pincel">
+      <div className="toolbar__pincel" hidden={!podeApontar}>
         <div className="toolbar__label">
           <Icon name="paint" size={16} />
           <span>Pintura rápida</span>
@@ -161,7 +163,7 @@ export function Toolbar({
           <button
             className="button button--secondary"
             type="button"
-            onClick={() => inputRef.current?.click()}
+            disabled={!podeApontar} onClick={() => inputRef.current?.click()}
           >
             <Icon name="upload" />
             <span>Importar</span>
@@ -180,7 +182,7 @@ export function Toolbar({
           <button
             className="icon-button icon-button--danger"
             type="button"
-            onClick={onLimparTudo}
+            disabled={!podeApontar} onClick={onLimparTudo}
             title={`Limpar marcações de ${nomeMapaAtivo}`}
             aria-label={`Limpar todas as marcações da aba ${nomeMapaAtivo}`}
           >

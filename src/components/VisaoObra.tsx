@@ -9,7 +9,7 @@ import { unidadesDaPlanta } from "../services/geometria";
 import type { DisponibilidadeMaterial, Kit, Equipe, MapaServico, Obra, PlantaDefinition, PlantaObra, StatusConfig, StatusFilter } from "../types/planta";
 import type { DestinoMapa } from "./NavegacaoObra";
 
-interface Props { disponibilidades?: (kit: Kit) => DisponibilidadeMaterial[]; uid: string; obra: Obra; plantas: PlantaObra[]; estoque: boolean; onAbrir: (destino: DestinoMapa) => void }
+interface Props { restringirObra?: boolean; disponibilidades?: (kit: Kit) => DisponibilidadeMaterial[]; uid: string; obra: Obra; plantas: PlantaObra[]; estoque: boolean; onAbrir: (destino: DestinoMapa) => void }
 export function VisaoObra({ plantas, ...props }: Props) {
   const { legendas, carregando } = useLegendas(props.uid);
   const { dados: equipes } = useEquipes(props.uid, props.obra.id);
@@ -41,10 +41,10 @@ function ResumoComDefinicao(props: ResumoProps) {
   const definicao = useDefinicao(props.uid, props.obra.id, props.planta);
   return definicao ? <ResumoServicos {...props} definicao={definicao} /> : <p>Definição indisponível. Confira a conexão ou o cadastro.</p>;
 }
-function ResumoServicos({ uid, obra, planta, estoque, legendas, definicao, onAbrir, equipes, equipe, disponibilidades }: ResumoProps & { definicao: PlantaDefinition }) {
+function ResumoServicos({ uid, obra, planta, estoque, legendas, definicao, onAbrir, equipes, equipe, disponibilidades, restringirObra }: ResumoProps & { definicao: PlantaDefinition }) {
   const controle = useControleSync();
   const [mapas, setMapas] = useState<MapaServico[] | null>(null), [tentativa, setTentativa] = useState(0);
-  const kits = useKits(uid, obra.id, estoque, planta, definicao);
+  const kits = useKits(uid, obra.id, estoque, planta, definicao, restringirObra);
   useEffect(() => {
     const chave = `resumo:${obra.id}:${planta.id}`;
     controle.observar(chave, { fromCache: true, hasPendingWrites: false });

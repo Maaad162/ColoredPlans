@@ -31,7 +31,7 @@ export function observarContextosMapa(banco: Firestore, uid: string, obraId: str
     snapshot => atualizar(snapshot.docs.map(item => converterContexto(item.id, item.data())), snapshot.metadata), falhar);
 }
 export function salvarContexto(banco: Firestore, uid: string, obraId: string, mapa: MapaServico, unidadeId: string,
-  anterior: Pick<ContextoUnidade, "observacao" | "responsavel">, proximo: Pick<ContextoUnidade, "observacao" | "responsavel">, unidades: readonly string[] = Object.keys(UNIDADE_BY_ID)) {
+  anterior: Pick<ContextoUnidade, "observacao" | "responsavel">, proximo: Pick<ContextoUnidade, "observacao" | "responsavel">, unidades: readonly string[] = Object.keys(UNIDADE_BY_ID), autorId = uid) {
   const observacao = proximo.observacao.trim(), responsavel = proximo.responsavel.trim();
   if (!unidades.includes(unidadeId) || mapa.userId !== uid || mapa.obraId !== obraId) throw new ErroOperacional("permissao", "Unidade, mapa ou obra inválidos.");
   if (observacao.length > CONTEXTO_OBSERVACAO_LIMITE || responsavel.length > CONTEXTO_RESPONSAVEL_LIMITE) {
@@ -43,9 +43,9 @@ export function salvarContexto(banco: Firestore, uid: string, obraId: string, ma
   const lote = writeBatch(banco);
   const escopoPlanta = mapa.plantaId ? { plantaId: mapa.plantaId } : {};
   lote.set(referencia, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, ...escopoPlanta, mapaId: mapa.id, unidadeId,
-    observacao, responsavel, atualizadoEm: serverTimestamp(), atualizadoPor: uid, ultimoEventoId: evento.id });
+    observacao, responsavel, atualizadoEm: serverTimestamp(), atualizadoPor: autorId, ultimoEventoId: evento.id });
   lote.set(evento, { schemaVersion: CURRENT_SCHEMA_VERSION, userId: uid, obraId, ...escopoPlanta, mapaId: mapa.id, mapaNome: mapa.nome,
-    acao: "contexto", unidadeIds: [unidadeId], antes: { observacao: anterior.observacao, responsavel: anterior.responsavel }, depois: { observacao, responsavel },
+    ...(autorId !== uid ? { autorId } : {}), acao: "contexto", unidadeIds: [unidadeId], antes: { observacao: anterior.observacao, responsavel: anterior.responsavel }, depois: { observacao, responsavel },
     nomeAnterior: mapa.nome, nomeAtual: mapa.nome, criadoEm: serverTimestamp() });
   return lote.commit();
 }
