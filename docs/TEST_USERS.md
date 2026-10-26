@@ -1,6 +1,6 @@
 # Contas locais para testar a hierarquia
 
-Entrega da versão **1.7.0**: níveis hierárquicos, colaboração no mesmo espaço, proteção dos mapas/Kits dos Técnicos e provisionamento local idempotente. Validação local: typecheck, lint, 40 testes unitários, 52 testes de Rules, 24 testes de navegador e build aprovados.
+Entrega da versão **1.7.0**: níveis hierárquicos, colaboração no mesmo espaço, proteção dos mapas/Kits dos Técnicos e provisionamento local idempotente. Validação local: typecheck, lint, 47 testes unitários, 52 testes de Rules, 31 testes de navegador e build aprovados.
 
 Este documento e as credenciais abaixo são exclusivos de desenvolvimento. **NÃO É CREDENCIAL DE PRODUÇÃO.** O seed não aceita projetos reais nem hosts remotos. Nenhum usuário real, documento de produção ou autenticação de produção é alterado.
 
@@ -44,7 +44,7 @@ npm run seed:test-users
 
 O script `scripts/seed-test-users.mjs` exige os dois hosts locais e fixa o projeto `demo-coloredplans`. Variáveis de projeto que apontem a outro destino abortam antes de qualquer chamada de rede. Não há opção para desabilitar a proteção, usar credenciais de produção ou resetar dados.
 
-Reexecutar recupera a senha de teste e as atribuições dos perfis reservados, sem duplicar contas. Mapas, marcações, contextos, histórico, Kits, nomes e legendas existentes são preservados. Documentos de exemplo só são criados quando não existem. Colisões de UID/e-mail abortam sem substituir identidades. A conta pendente é criada apenas no Auth; se alguém a provisionar, o seed pede revisão manual, sem apagar seu perfil.
+Reexecutar recupera a senha de teste e as atribuições dos perfis reservados, sem duplicar contas. Após reexecutar, entre novamente se a sessão precisar ser renovada. Mapas, marcações, contextos, histórico, Kits, nomes e legendas existentes são preservados. Documentos de exemplo só são criados quando não existem. Colisões de UID/e-mail abortam sem substituir identidades. A conta pendente é criada apenas no Auth; se alguém a provisionar, o seed pede revisão manual, sem apagar seu perfil.
 
 ## Obra e relações
 
@@ -56,7 +56,7 @@ Reexecutar recupera a senha de teste e as atribuições dos perfis reservados, s
 - O cenário local contém uma planta `planta-principal` usando `original-v1`, o mapa `mapa-teste` / “Pintura de teste”, do Técnico Apontamento, e `mapa-teste-estoque` / “Estoque de teste”, do Técnico Estoque. Usa apenas dados mínimos de exemplo, sem copiar a base real. Reexecutar o seed não altera autoria nem dados de mapas já existentes.
 - A obra adicional `obra-teste-b` existe somente no emulador. Técnico, Engenheiros e Coordenador não a recebem. Gestor e DEV podem acessá-la pelo escopo de todas as obras do seu espaço.
 
-Relações `superiorId`: `teste-dev` → `teste-gestor` → `teste-coordenador` → `teste-engenheiro` → (`teste-tecnico`, `teste-tecnico-estoque`). O Engenheiro de estoque adicional também aponta ao Coordenador; sua conta anterior foi preservada, mas não é necessária para acompanhar Estoque. DEV tem `superiorId: null`. Esta relação valida os níveis adjacentes; **não herda obras automaticamente**. Técnicos, Engenheiros e Coordenador recebem `obraIds: ['obra-principal']`. Gestor e DEV abrangem todas as obras do mesmo espaço, nunca de outro espaço.
+Relações `superiorId`: `teste-dev` → `teste-gestor` → `teste-coordenador` → `teste-engenheiro` → (`teste-tecnico`, `teste-tecnico-estoque`). O Engenheiro de estoque adicional também aponta ao Coordenador; sua conta anterior foi preservada, mas não é necessária para acompanhar Estoque. DEV tem `superiorId: null`. Esta relação valida os níveis adjacentes; **não herda obras automaticamente**. Técnicos, Engenheiros e Coordenador recebem `obraIds: ['obra-principal', 'lirios-do-vale-ii']`. Gestor e DEV abrangem todas as obras do mesmo espaço, nunca de outro espaço.
 
 ## Documentos e compatibilidade
 
@@ -126,3 +126,17 @@ O comando acima apenas lê/valida e mostra os perfis que mudariam. Após revisar
 São atualizados somente `schemaVersion`, `nivel`, `espacoId`, `superiorId` e `obraIds`, com máscara de campos e precondição de versão em lote atômico. Demais campos, timestamps, setor e dados operacionais são preservados. Uma reexecução sem mudanças não grava nada. Superiores e o proprietário dos caminhos devem constar do mesmo plano; o proprietário pode ter qualquer nível coerente com a árvore, sem promoção automática por ser dono dos caminhos antigos. A migração aborta se uma obra atribuída não existe ou ainda não concluiu a migração operacional para schema 1, se um perfil pertence a outro espaço ou se um usuário legado que passaria a compartilhar dados já possui obras/Kits/legendas próprios. Esses casos precisam de análise específica para não ocultar dados; o script não os move nem os apaga.
 
 Valide com `npm run check`. Os testes de seed verificam proteção antes de rede, colisões e preservação; as Rules verificam tentativas diretas de acesso/escrita; a suíte de interface usa login real no Auth Emulator para cada nível.
+
+## Mapa adicional — Lírios do Vale II
+
+As mesmas sete contas provisionadas recebem acesso explícito à obra local
+`lirios-do-vale-ii`, além de Jardim das Tulipas I (`obra-principal`).
+A conta pendente permanece somente no Authentication. `obra-teste-b` continua
+sem atribuição a Técnicos, Engenheiros e Coordenador, preservando o teste negativo.
+
+O seed cria um único template `lirios-v1`, a planta `implantacao-lirios` e o
+mapa `mapa-planejamento`, todos no espaço compartilhado `teste-dev`.
+São 100 moradias em 8 blocos e 8 equipamentos/áreas comuns selecionáveis,
+com IDs próprios para marcação, contexto, Kits e exportação. Não há cópia dos
+dados reais da empresa. Uma reexecução preserva mapas, template e trabalho manual.
+Geometria e interpretações da imagem: [LIRIOS_DO_VALE_II.md](LIRIOS_DO_VALE_II.md).

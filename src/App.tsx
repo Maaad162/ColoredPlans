@@ -126,6 +126,8 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
   const podeEditarMapa = (mapa: typeof planta.abaAtual | undefined) => podeAlterarMapa(perfil.hierarquia, usuario.uid, mapa);
   const gerenciarMapaAtual = acesso.gerenciar && podeEditarMapa(planta.abaAtual);
   const resumoMateriais = kitAtivo ? calcularResumoMateriais(kitAtivo, resumoExecucao) : null;
+  const totalAreas = definicao.areasComuns?.length ?? 0;
+  const totalMoradias = definicao.blocos.reduce((total, bloco) => total + bloco.unidades.length, 0);
 
   async function importar(arquivo: File) {
     try {
@@ -179,7 +181,7 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
             {perfil.tipoConta === "estoque" ? "Estoque" : "Apontamento"}
           </span>
           <span className="header-meta__divider" />
-          <span>{planta.unidades.length} unidades</span>
+          <span>{totalAreas ? `${totalMoradias} moradias + ${totalAreas} áreas comuns` : `${planta.unidades.length} unidades`}</span>
           <span className="header-meta__divider" />
           <span className="header-user" title={usuario.email ?? "Usuário autenticado"}>
             {usuario.email}
@@ -244,6 +246,7 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
         <BuscaUnidade unidades={planta.unidades} onSelecionar={planta.localizarUnidade} />
         <button className="link-button" type="button" onClick={() => setHistorico({ mapaId: planta.abaAtual.id })}>Histórico deste mapa</button>
         <Toolbar
+          temAreasComuns={totalAreas > 0}
           podeApontar={acesso.apontar}
           blocos={planta.blocos}
           legendas={planta.statuses}
@@ -279,6 +282,9 @@ function AplicacaoMapas({ usuario, obra, instancia, definicao, destino, perfil }
           <div><span>Em andamento</span><strong>{resumoExecucao.andamento}</strong></div>
           <div><span>Bloqueadas</span><strong>{resumoExecucao.bloqueadas}</strong></div>
           <div><span>Ainda não concluídas</span><strong>{resumoExecucao.restantes}</strong></div>
+          {totalAreas > 0 && <div><span>Escopo operacional deste mapa</span>
+            <strong>{unidadesAplicaveis.filter(u => u.tipo !== "area-comum").length} moradias + {unidadesAplicaveis.filter(u => u.tipo === "area-comum").length} áreas comuns</strong>
+          </div>}
           {resumoMateriais && <details className="materials-summary"><summary>Ver materiais necessários para concluir</summary>
             <p>Valores teóricos do Kit; não representam baixa ou saldo oficial do SIENGE.</p>
             {kitAtivo?.materiais.some(item => item.disponibilidadeManual !== null) && <p>Disponibilidade informada manualmente · atualização do Kit: {new Date(kitAtivo.atualizadoEm).toLocaleString("pt-BR")}{kitAtivo.atualizadoPor ? ` · por ${kitAtivo.atualizadoPor}` : ""}</p>}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SEED_PROJECT_ID, SEED_SPACE_ID, SEED_OBRA_ID, TEST_ACCOUNTS, createSeedDocuments, seedTestUsers, validateSeedEnvironment } from '../scripts/seed-test-users.mjs';
+import { SEED_PROJECT_ID, SEED_SPACE_ID, SEED_OBRA_ID, SEED_LIRIOS_OBRA_ID, TEST_ACCOUNTS, createSeedDocuments, seedTestUsers, validateSeedEnvironment } from '../scripts/seed-test-users.mjs';
 import { provisionHierarchy, validateHierarchyPlan } from '../scripts/provisionar-hierarquia.mjs';
 import { encodeFields, decodeFields } from '../scripts/lib/firebase-rest.mjs';
 import { NIVEIS, lerHierarquia, migrarPerfilV2, permissoes, podeAlterarMapa } from '../src/services/hierarquia.ts';
@@ -42,8 +42,13 @@ test('seed usa hierarquia real, um espaço compartilhado e obra de isolamento', 
   assert.deepEqual(tecnicos.map(d => d.data.tipoConta).sort(), ['apontamento', 'estoque']);
   assert(tecnicos.every(d => d.data.superiorId === 'teste-engenheiro'));
   assert(profiles.every(d => d.data.espacoId === SEED_SPACE_ID && d.data.obraIds.includes(SEED_OBRA_ID)));
-  assert.equal(documents.filter(d => /^usuarios\/[^/]+\/obras\/[^/]+$/.test(d.path)).length, 2);
+  assert.equal(documents.filter(d => /^usuarios\/[^/]+\/obras\/[^/]+$/.test(d.path)).length, 3);
   assert.equal(SEED_OBRA_ID, 'obra-principal');
+  assert(profiles.every(d => d.data.obraIds.includes(SEED_LIRIOS_OBRA_ID)));
+  const template = documents.find(d => d.path.includes('/templates/lirios-v1'));
+  assert.equal(template.data.unidadeIds.length, 108);
+  assert.equal(template.data.definicao.blocos.length, 8);
+  assert.equal(template.data.definicao.areasComuns.length, 8);
   assert(!JSON.stringify(documents).includes('ColoredPlans@Teste2026'));
   assert(!documents.some(d => d.path === 'usuarios/teste-pendente'));
 });

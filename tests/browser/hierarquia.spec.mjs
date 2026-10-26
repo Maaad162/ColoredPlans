@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { collection, doc, getDocFromServer, getDocs, query, where } from 'firebase/firestore';
-import { seedTestUsers, TEST_ACCOUNTS, SEED_PASSWORD, SEED_PROJECT_ID, SEED_SPACE_ID, SEED_OBRA_ID } from '../../scripts/seed-test-users.mjs';
+import { seedTestUsers, TEST_ACCOUNTS, SEED_PASSWORD, SEED_PROJECT_ID, SEED_SPACE_ID, SEED_OBRA_ID, SEED_LIRIOS_OBRA_ID } from '../../scripts/seed-test-users.mjs';
 
 let ambiente;
 const conta = nivel => TEST_ACCOUNTS.find(item => item.nivel === nivel);
@@ -56,7 +56,8 @@ for (const [nivel, nome, apontar, gerenciar, todas] of [
     await abrirObra(page);
     await expect(page.getByText(nome, { exact: true })).toBeVisible();
     const ids = await obraSelect(page).locator('option').evaluateAll(opcoes => opcoes.map(opcao => opcao.value));
-    expect(ids).toEqual(todas ? expect.arrayContaining([SEED_OBRA_ID, 'obra-teste-b']) : [SEED_OBRA_ID]);
+    expect(ids).toEqual(todas ? expect.arrayContaining([SEED_OBRA_ID, SEED_LIRIOS_OBRA_ID, 'obra-teste-b']) : expect.arrayContaining([SEED_OBRA_ID, SEED_LIRIOS_OBRA_ID]));
+    if (!todas) expect(ids).not.toContain('obra-teste-b');
     await expect(page.getByRole('button', { name: 'Nova aba', exact: true })).toHaveCount(gerenciar ? 1 : 0);
     await expect(page.getByRole('button', { name: 'Cores e legendas', exact: true })).toHaveCount(nivel === 'dev' ? 1 : 0);
     await expect(page.getByRole('button', { name: 'Central de Kits', exact: true })).toHaveCount(['engenheiro', 'coordenador', 'dev'].includes(nivel) ? 1 : 0);
@@ -165,6 +166,7 @@ test('hierarquia: DEV revoga e restaura obra em sessão ativa sem alterar nível
     await modal.getByRole('button', { name: `Editar ${conta('tecnico').email}`, exact: true }).click();
     await expect(modal.getByRole('combobox', { name: /nível/i })).toHaveCount(0);
     await modal.getByRole('checkbox', { name: 'Jardim das Tulipas I', exact: true }).uncheck();
+    await modal.getByRole('checkbox', { name: 'Lírios do Vale II', exact: true }).uncheck();
     await modal.getByRole('button', { name: 'Salvar acessos', exact: true }).click();
     await expect.poll(async () => (await getDocFromServer(doc(bancoDev(), `usuarios/${conta('tecnico').uid}`))).data().obraIds).toEqual([]);
     await expect(tecnico.getByText('Nenhuma obra disponível. Solicite o provisionamento ao responsável técnico.', { exact: true })).toBeVisible();

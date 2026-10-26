@@ -1,5 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { OBRA_PADRAO } from '../src/config/dados.ts';
+import { LIRIOS_OBRA_ID, LIRIOS_PLANTA_ID, LIRIOS_TEMPLATE_ID, LIRIOS_DEFINICAO } from '../src/data/liriosDoValeII.ts';
+import { validarDefinicao, idsDaPlanta } from '../src/services/geometria.ts';
 import { STATUSES } from '../src/config/statuses.ts';
 import { encodeFields, requestJson, localEmulatorHost } from './lib/firebase-rest.mjs';
 
@@ -7,6 +9,8 @@ export const SEED_PROJECT_ID = 'demo-coloredplans';
 export const SEED_PASSWORD = 'ColoredPlans@Teste2026'; // SOMENTE emuladores; nunca importado pelo aplicativo.
 export const SEED_SPACE_ID = 'teste-dev';
 export const SEED_OBRA_ID = OBRA_PADRAO.id;
+export const SEED_LIRIOS_OBRA_ID = LIRIOS_OBRA_ID;
+export const SEED_LIRIOS_MAPA_ID = 'mapa-planejamento';
 export const TEST_ACCOUNTS = [
   { uid: 'teste-dev', email: 'dev.teste@coloredplans.local', nivel: 'dev', tipoConta: 'estoque', superiorId: null },
   { uid: 'teste-gestor', email: 'gestor.teste@coloredplans.local', nivel: 'gestor', tipoConta: 'apontamento', superiorId: 'teste-dev' },
@@ -40,7 +44,7 @@ export function createSeedDocuments(now = new Date()) {
     path: `usuarios/${account.uid}`, profile: true,
     data: { schemaVersion: 2, userId: account.uid, email: account.email, tipoConta: account.tipoConta,
       nivel: account.nivel, espacoId: SEED_SPACE_ID, superiorId: account.superiorId,
-      obraIds: [SEED_OBRA_ID], criadoEm: now },
+      obraIds: [SEED_OBRA_ID, SEED_LIRIOS_OBRA_ID], criadoEm: now },
   }));
   for (const obra of [OBRA_PADRAO, { id: 'obra-teste-b', nome: 'Obra Teste B — isolamento' }]) {
     const path = `usuarios/${SEED_SPACE_ID}/obras/${obra.id}`;
@@ -53,6 +57,19 @@ export function createSeedDocuments(now = new Date()) {
       plantaId: 'planta-principal', nome: 'Estoque de teste', tipo: 'manual', kitUnidadeIds: [],
       marcacoes: {}, criadoPor: 'teste-tecnico-estoque', criadoEm: now, atualizadoEm: now, atualizadoPor: 'teste-tecnico-estoque' } });
   }
+  const lirios = validarDefinicao(LIRIOS_DEFINICAO);
+  const baseLirios = 'usuarios/' + SEED_SPACE_ID + '/obras/' + LIRIOS_OBRA_ID;
+  documents.push({ path: baseLirios, data: { schemaVersion: 1, userId: SEED_SPACE_ID,
+    nome: 'Lírios do Vale II', status: 'ativa', plantaLegada: false, criadoEm: now } });
+  documents.push({ path: baseLirios + '/templates/' + LIRIOS_TEMPLATE_ID,
+    data: { schemaVersion: 1, definicao: lirios, unidadeIds: idsDaPlanta(lirios) } });
+  documents.push({ path: baseLirios + '/plantas/' + LIRIOS_PLANTA_ID,
+    data: { schemaVersion: 1, nome: 'Implantação — Lírios do Vale II', templateId: LIRIOS_TEMPLATE_ID } });
+  documents.push({ path: baseLirios + '/mapas/' + SEED_LIRIOS_MAPA_ID, data: {
+    schemaVersion: 1, userId: SEED_SPACE_ID, obraId: LIRIOS_OBRA_ID, plantaId: LIRIOS_PLANTA_ID,
+    nome: 'Planejamento físico', tipo: 'manual', kitUnidadeIds: [], marcacoes: {},
+    criadoPor: 'teste-tecnico', criadoEm: now, atualizadoEm: now, atualizadoPor: 'teste-tecnico',
+  } });
   for (const { id, ...legenda } of STATUSES) {
     documents.push({ path: `usuarios/${SEED_SPACE_ID}/legendas/${id}`,
       data: { ...legenda, schemaVersion: 1, userId: SEED_SPACE_ID, criadoEm: now, atualizadoEm: now } });

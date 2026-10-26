@@ -5,6 +5,8 @@ import type {
   StatusConfig,
 } from "../../types/planta";
 import { Bloco } from "./Bloco";
+import { Unidade } from "./Unidade";
+import { unidadeDaArea } from "../../services/geometria";
 import "./Planta.css";
 
 interface PlantaProps {
@@ -89,11 +91,17 @@ export function Planta({
     >
       <div className="planta-scale" style={{ width: `${zoom * 100}%` }}>
         <svg
-          className="planta-svg"
+          className={`planta-svg${definicao.implantacao ? " planta-svg--implantacao" : ""}`}
           viewBox={`0 0 ${definicao.width} ${definicao.height}`}
           role="group"
-          aria-label={`${blocos.reduce((total, bloco) => total + bloco.unidades.length, 0)} unidades distribuídas em ${blocos.length} blocos`}
+          aria-label={`${blocos.reduce((total, bloco) => total + bloco.unidades.length, 0)} unidades distribuídas em ${blocos.length} blocos${definicao.areasComuns?.length ? ` habitacionais e ${definicao.areasComuns.length} áreas comuns` : ""}`}
         >
+          {definicao.implantacao && <g aria-hidden="true">
+            <polygon className="implantacao__lote" points={definicao.implantacao.limite.map(p => `${p.x},${p.y}`).join(" ")} />
+            {definicao.implantacao.circulacao.map((poligono, indice) => (
+              <polygon key={indice} className="implantacao__circulacao" points={poligono.pontos.map(p => `${p.x},${p.y}`).join(" ")} />
+            ))}
+          </g>}
           {definicao.decoracao === "original" && <>
           <rect className="planta__papel" x="8" y="8" width="1104" height="674" rx="12" />
           <path
@@ -146,6 +154,12 @@ export function Planta({
           </g>
 
           </>}
+          {definicao.areasComuns?.map(area => (
+            <Unidade key={area.id} unidade={unidadeDaArea(area)}
+              statusId={marcacoes[area.id] ?? null} legendas={legendas}
+              selecionada={selecionadaId === area.id} atenuada={unidadeAtenuada(area.id)}
+              mapaKit={mapaKit} kitUtilizado={unidadesDoKit.has(area.id)} onSelecionar={onSelecionar} />
+          ))}
           {blocos.map((bloco) => (
             <Bloco
               key={bloco.id}

@@ -35,7 +35,10 @@ export function Unidade({
       ? ", serviço aplicável"
       : ", serviço não aplicável"
     : "";
-  const descricao = `Bloco ${unidade.bloco}, unidade ${unidade.numero}, ${status.nome}${usoKit}`;
+  const areaComum = unidade.tipo === "area-comum";
+  const nome = areaComum ? `Área comum, ${unidade.label ?? unidade.numero}` : `Bloco ${unidade.bloco}, unidade ${unidade.numero}`;
+  const descricao = `${nome}, ${status.nome}${usoKit}`;
+  const linhas = unidade.linhasRotulo ?? [unidade.label ?? unidade.numero];
   const centroX = unidade.x + unidade.width / 2;
   const centroY = unidade.y + unidade.height / 2;
 
@@ -51,6 +54,7 @@ export function Unidade({
       className={`unidade${selecionada ? " unidade--selecionada" : ""}${
         atenuada ? " unidade--atenuada" : ""
       }${mapaKit ? kitUtilizado ? " unidade--kit-utilizado" : " unidade--kit-nao-utilizado" : ""}`}
+      data-unidade-id={unidade.id}
       role="button"
       tabIndex={0}
       aria-label={descricao}
@@ -58,7 +62,7 @@ export function Unidade({
       onClick={() => onSelecionar(unidade.id)}
       onKeyDown={handleKeyDown}
     >
-      <title>{`Bloco ${unidade.bloco}\nUnidade ${unidade.numero}\n${status.nome}${usoKit}`}</title>
+      <title>{descricao}</title>
       <rect
         className="unidade__lote"
         x={unidade.x}
@@ -69,13 +73,16 @@ export function Unidade({
         fill={corPreenchimento}
       />
       <text
-        className="unidade__numero"
+        className={areaComum ? "unidade__nome-area" : "unidade__numero"}
         x={centroX}
-        y={centroY + 3}
+        y={areaComum ? centroY : centroY + 3}
         fill={corTexto}
         textAnchor="middle"
+        transform={unidade.rotacaoRotulo ? `rotate(${unidade.rotacaoRotulo} ${centroX} ${centroY})` : undefined}
       >
-        {unidade.label ?? unidade.numero}
+        {areaComum ? linhas.map((linha, indice) => (
+          <tspan key={indice} x={centroX} dy={indice === 0 ? `-${(linhas.length - 1) * 0.6}em` : "1.2em"}>{linha}</tspan>
+        )) : unidade.label ?? unidade.numero}
       </text>
       {statusId && (
         <text

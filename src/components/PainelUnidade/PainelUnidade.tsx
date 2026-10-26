@@ -42,7 +42,7 @@ export function PainelUnidade({
       <div className="side-card__cabecalho">
         <div>
           <p className="eyebrow">Seleção atual</p>
-          <h2 id="unidade-titulo">Unidade selecionada</h2>
+          <h2 id="unidade-titulo">{unidade?.tipo === "area-comum" ? "Área comum selecionada" : "Unidade selecionada"}</h2>
         </div>
         {unidade && <span className="selection-indicator" aria-hidden="true" />}
       </div>
@@ -56,12 +56,12 @@ export function PainelUnidade({
         <>
           <dl className="unidade-detalhes">
             <div>
-              <dt>Bloco</dt>
-              <dd>Bloco {unidade.bloco}</dd>
+              <dt>{unidade.tipo === "area-comum" ? "Setor" : "Bloco"}</dt>
+              <dd>{unidade.tipo === "area-comum" ? "Áreas comuns" : `Bloco ${unidade.bloco}`}</dd>
             </div>
             <div>
-              <dt>Unidade</dt>
-              <dd>{unidade.numero}</dd>
+              <dt>{unidade.tipo === "area-comum" ? "Área" : "Unidade"}</dt>
+              <dd>{unidade.tipo === "area-comum" ? unidade.label : unidade.numero}</dd>
             </div>
             <div className="unidade-detalhes__status">
               <dt>Status</dt>
@@ -76,7 +76,7 @@ export function PainelUnidade({
             </div>
           </dl>
 
-          <button type="button" className="link-button" onClick={onHistorico}>Histórico desta unidade</button>
+          <button type="button" className="link-button" onClick={onHistorico}>{unidade.tipo === "area-comum" ? "Histórico desta área" : "Histórico desta unidade"}</button>
           <div className="painel-unidade__edicao" hidden={!podeApontar}>
             <p className="field-label">Alterar status</p>
             <PaletaStatus

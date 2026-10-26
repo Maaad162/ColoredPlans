@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { AREAS_COMUNS_GRUPO } from "../../services/geometria";
 import type {
   Bloco,
   FerramentaPintura,
@@ -9,6 +10,7 @@ import { Icon } from "../Icon";
 import { PaletaStatus } from "../PaletaStatus/PaletaStatus";
 
 interface ToolbarProps {
+  temAreasComuns?: boolean;
   podeApontar?: boolean;
   blocos: Bloco[];
   legendas: StatusConfig[];
@@ -32,6 +34,7 @@ interface ToolbarProps {
 }
 
 export function Toolbar({
+  temAreasComuns = false,
   podeApontar = true,
   blocos,
   legendas,
@@ -59,7 +62,7 @@ export function Toolbar({
     <div className="toolbar" aria-label="Ferramentas da planta">
       <div className="toolbar__filtros">
         <div className="select-field">
-          <label htmlFor="filtro-bloco">Bloco</label>
+          <label htmlFor="filtro-bloco">{temAreasComuns ? "Bloco ou área" : "Bloco"}</label>
           <div className="select-field__control">
             <Icon name="home" size={16} />
             <select
@@ -67,7 +70,8 @@ export function Toolbar({
               value={blocoFiltro}
               onChange={(event) => onBlocoFiltro(event.target.value)}
             >
-              <option value="todos">Todos os blocos</option>
+              <option value="todos">{temAreasComuns ? "Todos os blocos e áreas" : "Todos os blocos"}</option>
+              {temAreasComuns && <option value={AREAS_COMUNS_GRUPO}>Áreas comuns</option>}
               {blocos.map((bloco) => (
                 <option key={bloco.id} value={bloco.id}>{bloco.nome}</option>
               ))}
