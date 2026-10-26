@@ -39,6 +39,22 @@ export interface PlantaDefinition {
   height: number;
   decoracao?: "original";
   blocos: Bloco[];
+  areasComuns?: AreaComum[];
+  implantacao?: { limite: PontoPlanta[]; circulacao: { pontos: PontoPlanta[] }[] };
+}
+
+export interface PontoPlanta { x: number; y: number }
+export type CategoriaAreaComum = "bicicletario" | "residuos" | "parque-infantil" | "centro-comunitario" | "academia";
+export interface AreaComum {
+  id: string;
+  nome: string;
+  categoria: CategoriaAreaComum;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  linhasRotulo?: string[];
+  rotacaoRotulo?: -90;
 }
 
 export interface PlantaObra {
@@ -95,6 +111,9 @@ export interface Kit {
 }
 
 export interface Unidade {
+  tipo?: "moradia" | "area-comum";
+  linhasRotulo?: string[];
+  rotacaoRotulo?: -90;
   id: string;
   label?: string;
   bloco: string;
@@ -106,6 +125,8 @@ export interface Unidade {
 }
 
 export interface Bloco {
+  posicaoTitulo?: "superior" | "inferior";
+  rotulosFileiras?: { superior: string; inferior: string };
   id: string;
   nome: string;
   x: number;

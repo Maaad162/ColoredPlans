@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { unidadesDaPlanta } from "../../services/geometria";
+import { rotuloDaUnidade, unidadesDaPlanta } from "../../services/geometria";
 import type { PlantaDefinition, Unidade } from "../../types/planta";
 import type { useKits } from "../../hooks/useKits";
 import { traduzirErro } from "../../services/erros";
@@ -198,7 +198,7 @@ function KitDetalhes({ unidades, kit, onEditar, onExcluir, onVincular, onAbrirMa
           <div className="unit-chips">
             {kit.unidadeIds.map((id) => {
               const unidade = unidades.find(u => u.id === id);
-              return unidade ? <span key={id}>Bloco {unidade.bloco} · {unidade.numero}</span> : null;
+              return unidade ? <span key={id}>{unidade.tipo === "area-comum" ? rotuloDaUnidade(unidade) : `Bloco ${unidade.bloco} · ${unidade.numero}`}</span> : null;
             })}
           </div>
         ) : <p className="kit-section__empty">Nenhuma unidade vinculada.</p>}
@@ -332,6 +332,14 @@ function KitUnidadesModal({ definicao, kit, onFechar, onSalvar }: KitUnidadesMod
         <div className="manager-heading"><div><p className="eyebrow">Kit · {kit.nome}</p><h2 id="kit-unidades-titulo">Selecionar unidades aplicáveis</h2><p>Marque onde este serviço e sua composição teórica se aplicam.</p></div><button className="icon-button" type="button" onClick={onFechar} aria-label="Fechar">×</button></div>
         <div className="units-selection-summary"><div><span>Selecionadas</span><strong>{selecionadas.size}</strong></div><div><span>Itens calculados</span><strong>{formatarQuantidade(totalConsumo)}</strong></div><div className="units-selection-actions"><button className="link-button" type="button" onClick={() => setSelecionadas(new Set(unidadesDaPlanta(definicao).map((unidade) => unidade.id)))}>Selecionar todas</button><button className="link-button" type="button" onClick={() => setSelecionadas(new Set())}>Limpar</button></div></div>
         <div className="unit-selector">
+          {!!definicao.areasComuns?.length && <fieldset><legend>Áreas comuns</legend><div>
+            {unidadesDaPlanta(definicao).filter(unidade => unidade.tipo === "area-comum").map(unidade => (
+              <label className={selecionadas.has(unidade.id) ? "unit-option unit-option--selected" : "unit-option"} key={unidade.id}>
+                <input type="checkbox" checked={selecionadas.has(unidade.id)} onChange={() => alternar(unidade.id)} />
+                <span>{unidade.label}</span>
+              </label>
+            ))}
+          </div></fieldset>}
           {definicao.blocos.map((bloco) => (
             <fieldset key={bloco.id}><legend>{bloco.nome}</legend><div>
               {[...bloco.unidades].sort((a, b) => a.numero.localeCompare(b.numero)).map((unidade) => (

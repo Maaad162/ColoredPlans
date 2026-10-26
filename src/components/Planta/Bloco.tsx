@@ -31,14 +31,21 @@ export function Bloco({
       <rect
         className="bloco__fundo"
         x={bloco.x - 5}
-        y={bloco.y - 24}
+        y={bloco.posicaoTitulo === "inferior" ? bloco.y - 3 : bloco.y - 24}
         width={bloco.width + 10}
         height={bloco.height + 29}
         rx="4"
       />
-      <text className="bloco__titulo" x={bloco.x} y={bloco.y - 10}>
+      <text className="bloco__titulo"
+        x={bloco.posicaoTitulo ? bloco.x + bloco.width / 2 : bloco.x}
+        y={bloco.posicaoTitulo === "inferior" ? bloco.y + bloco.height + 17 : bloco.y - 10}
+        textAnchor={bloco.posicaoTitulo ? "middle" : "start"}>
         {bloco.nome.toUpperCase()}
       </text>
+      {bloco.rotulosFileiras && <g className="bloco__fileiras" aria-hidden="true">
+        <text x={bloco.x + bloco.width + 7} y={bloco.y + bloco.height / 4 + 4}>{bloco.rotulosFileiras.superior}</text>
+        <text x={bloco.x + bloco.width + 7} y={bloco.y + bloco.height * 3 / 4 + 4}>{bloco.rotulosFileiras.inferior}</text>
+      </g>}
       {bloco.unidades.map((unidade) => (
         <Unidade
           key={unidade.id}

@@ -197,3 +197,11 @@
     min-width: 720px;
   }
 }
+
+/* Implantação numérica: equipamentos permanecem alvos operacionais independentes. */
+.implantacao__lote { fill: #fff; stroke: #27362f; stroke-width: 3; stroke-linejoin: miter; }
+.implantacao__circulacao { fill: #d4d4d4; }
+.planta-svg--implantacao .bloco__titulo { font-size: 17px; letter-spacing: 0; }
+.planta-svg--implantacao .unidade__numero { font-size: 14px; font-weight: 500; }
+.bloco__fileiras { fill: #27362f; font-size: 12px; pointer-events: none; }
+.unidade__nome-area { font-size: 10px; font-weight: 600; dominant-baseline: central; pointer-events: none; }
